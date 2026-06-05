@@ -139,6 +139,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         libgfortran5 \
         libgomp1 \
+        libjpeg8 \
         libnetcdf19 \
         libnetcdff7 \
         libpng16-16 \
