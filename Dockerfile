@@ -1,4 +1,6 @@
-FROM ubuntu:22.04 AS builder
+ARG UBUNTU_VERSION=22.04
+
+FROM ubuntu:${UBUNTU_VERSION} AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -22,12 +24,25 @@ WORKDIR /src/wrf
 COPY . .
 
 RUN git submodule update --init --recursive \
-    && ./configure_new -p GNU -x -d _build -i /opt/wrf \
-    && ./compile_new _build -j"$(nproc)" \
-    && test -e /opt/wrf/run/real.exe \
-    && test -e /opt/wrf/run/wrf.exe
+    && ./ci/build-wrf.sh
 
-FROM ubuntu:22.04
+FROM ubuntu:${UBUNTU_VERSION}
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libgfortran5 \
+        libgomp1 \
+        libnetcdf19 \
+        libnetcdff7 \
+        libstdc++6 \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /opt/wrf /opt/wrf
+COPY ci/verify-wrf-runtime.sh /usr/local/bin/verify-wrf-runtime.sh
+
+RUN chmod +x /usr/local/bin/verify-wrf-runtime.sh \
+    && /usr/local/bin/verify-wrf-runtime.sh
+
 WORKDIR /opt/wrf/run

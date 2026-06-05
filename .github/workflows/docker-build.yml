@@ -23,7 +23,5 @@ jobs:
       - name: Build Docker image
         run: docker build --tag wrf-reproducible .
 
-      - name: Verify WRF binaries
-        run: |
-          docker run --rm wrf-reproducible test -e /opt/wrf/run/real.exe
-          docker run --rm wrf-reproducible test -e /opt/wrf/run/wrf.exe
+      - name: Verify runtime dependencies and startup
+        run: docker run --rm wrf-reproducible /usr/local/bin/verify-wrf-runtime.sh
