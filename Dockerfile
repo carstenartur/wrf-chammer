@@ -41,8 +41,10 @@ RUN apt-get update \
 
 COPY --from=builder /opt/wrf /opt/wrf
 COPY ci/verify-wrf-runtime.sh /usr/local/bin/verify-wrf-runtime.sh
+COPY ci/smoke-test-wrf.sh /usr/local/bin/smoke-test-wrf.sh
 
 RUN chmod +x /usr/local/bin/verify-wrf-runtime.sh \
+    /usr/local/bin/smoke-test-wrf.sh \
     && /usr/local/bin/verify-wrf-runtime.sh
 
 WORKDIR /opt/wrf/run

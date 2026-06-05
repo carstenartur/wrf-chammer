@@ -24,14 +24,14 @@ The Docker build invokes `ci/build-wrf.sh` inside the builder stage so the same 
 
 ```bash
 docker run --rm wrf-reproducible /usr/local/bin/verify-wrf-runtime.sh
+docker run --rm wrf-reproducible /usr/local/bin/smoke-test-wrf.sh
 ```
 
 The verification checks:
 
 - runtime dependencies via `ldd`
 - that `real.exe` and `wrf.exe` can be started in the final runtime image
-
-A full simulation run is not expected in this verification step.
+- a short `ideal.exe` + `wrf.exe` simulation (`test/em_quarter_ss`) and output file creation (`wrfinput_d01`, `wrfout_d01_*`)
 
 The runtime image installs the required shared-library packages for the linked binaries:
 
