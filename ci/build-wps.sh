@@ -20,8 +20,26 @@ set -eu
 
 export WRF_DIR NETCDF JASPERINC JASPERLIB
 
-# Select option 1: Linux x86_64 gfortran serial (with GRIB2 when JasPer is present)
-printf '1\n' | ./configure
+# Select Linux x86_64 gfortran serial option from available configure choices.
+rm -f configure.wps
+wps_opt=""
+for opt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
+  rm -f configure.wps
+  if printf '%s\n' "${opt}" | ./configure > /tmp/wps_configure.log 2>&1; then
+    if grep -Eiq '(^|[[:space:]])gfortran([[:space:]]|$)' configure.wps; then
+      wps_opt="${opt}"
+      break
+    fi
+  fi
+done
+
+if [ -z "${wps_opt}" ]; then
+  echo "Could not determine WPS gfortran serial configure option" >&2
+  cat /tmp/wps_configure.log >&2
+  exit 1
+fi
+
+echo "Using WPS configure option ${wps_opt}"
 
 ./compile 2>&1 | tee /tmp/build_wps.log
 

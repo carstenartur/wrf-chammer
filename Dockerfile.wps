@@ -28,7 +28,7 @@
 # Build arguments:
 #   UBUNTU_VERSION  – Ubuntu base image tag         (default: 22.04)
 #   WPS_VERSION     – WPS release tag to clone      (default: 4.6.0)
-#   JASPER_VERSION  – jasper source tag to build    (default: 4.2.4)
+#   JASPER_VERSION  – jasper source tag to build    (default: 2.0.33)
 #
 # Usage:
 #   docker build -f Dockerfile.wps -t wps-reproducible .
@@ -36,7 +36,7 @@
 
 ARG UBUNTU_VERSION=22.04
 ARG WPS_VERSION=4.6.0
-ARG JASPER_VERSION=4.2.4
+ARG JASPER_VERSION=2.0.33
 
 # ---------------------------------------------------------------------------
 # Builder stage: compile jasper, WRF (classic Makefile build), then WPS
@@ -61,6 +61,11 @@ RUN apt-get update \
         m4 \
         perl \
     && rm -rf /var/lib/apt/lists/*
+
+# WPS configure checks for $NETCDF/lib/libnetcdff.a; Ubuntu provides multiarch
+# shared libs. Add compatibility links under /usr/lib for NETCDF=/usr builds.
+RUN ln -sf /usr/lib/x86_64-linux-gnu/libnetcdff.so /usr/lib/libnetcdff.so \
+    && ln -sf /usr/lib/x86_64-linux-gnu/libnetcdff.so /usr/lib/libnetcdff.a
 
 ARG JASPER_VERSION
 
@@ -94,8 +99,20 @@ COPY . .
 RUN git submodule update --init --recursive \
     && export NETCDF=/usr \
     && export NETCDF_classic=1 \
-    && printf '1\n1\n' | ./configure \
-    && ./compile wrflib 2>&1 | tee /tmp/build_wrf_for_wps.log \
+    && rm -f configure.wrf \
+    && wrf_opt="" \
+    && for opt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40; do \
+         rm -f configure.wrf; \
+         if printf '%s\n1\n' "${opt}" | ./configure > /tmp/wrf_configure.log 2>&1; then \
+           if grep -Eq '^[[:space:]]*SFC[[:space:]]*=.*gfortran' configure.wrf; then \
+             wrf_opt="${opt}"; \
+             break; \
+           fi; \
+         fi; \
+       done \
+    && if [ -z "${wrf_opt}" ]; then echo "Could not determine WRF gfortran serial configure option" >&2; cat /tmp/wrf_configure.log >&2; exit 1; fi \
+    && printf 'Using WRF configure option %s\n' "${wrf_opt}" \
+    && ./compile wrf 2>&1 | tee /tmp/build_wrf_for_wps.log \
     && test -f /src/wrf/main/libwrflib.a
 
 # Clone WPS from the official upstream repository.
