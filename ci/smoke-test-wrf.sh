@@ -11,7 +11,7 @@ cp -a "${CASE_DIR}" "${SMOKE_DIR}"
 cd "${SMOKE_DIR}"
 
 for exe in ideal.exe wrf.exe; do
-  if [ ! -x "${exe}" ]; then
+  if [ ! -x "${SMOKE_DIR}/${exe}" ]; then
     echo "Missing executable: ${SMOKE_DIR}/${exe}" >&2
     exit 1
   fi
@@ -22,6 +22,9 @@ sed -i \
   -e 's/^[[:space:]]*end_minute[[:space:]]*=.*/ end_minute                          = 5,   5,   5,/' \
   -e 's/^[[:space:]]*history_interval[[:space:]]*=.*/ history_interval                    = 5,    5,    5,/' \
   namelist.input
+grep -Eq '^[[:space:]]*run_minutes[[:space:]]*=[[:space:]]*5,' namelist.input
+grep -Eq '^[[:space:]]*end_minute[[:space:]]*=[[:space:]]*5,[[:space:]]*5,[[:space:]]*5,' namelist.input
+grep -Eq '^[[:space:]]*history_interval[[:space:]]*=[[:space:]]*5,[[:space:]]*5,[[:space:]]*5,' namelist.input
 
 set +e
 timeout "${IDEAL_TIMEOUT}" ./ideal.exe > ideal.log 2>&1
@@ -52,8 +55,8 @@ if [ ! -s wrfinput_d01 ]; then
   exit 1
 fi
 
-wrfout_file="$(find . -maxdepth 1 -type f -name 'wrfout_d01_*' | head -n 1)"
-if [ -z "${wrfout_file}" ] || [ ! -s "${wrfout_file}" ]; then
+wrfout_file="$(ls -1 wrfout_d01_* 2>/dev/null | sort | head -n 1)"
+if [ -z "${wrfout_file}" ] || [ ! -s "./${wrfout_file}" ]; then
   echo "Smoke test failed: wrfout_d01 output was not created" >&2
   exit 1
 fi
