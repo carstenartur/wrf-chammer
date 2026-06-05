@@ -9,7 +9,7 @@ This repository includes a Docker-based reproducible build that generates `real.
 ## Build from a clean clone
 
 ```bash
-git clone https://github.com/carstenartur/wrf-chammer.git
+git clone <repo-url>
 cd wrf-chammer
 docker build -t wrf-reproducible .
 ```
