@@ -4,7 +4,10 @@ set -eu
 cd /opt/wrf/run
 
 for exe in real.exe wrf.exe; do
-  test -x "${exe}"
+  if [ ! -x "${exe}" ]; then
+    echo "Missing executable: /opt/wrf/run/${exe}" >&2
+    exit 1
+  fi
 
   ldd "${exe}" > "/tmp/${exe}.ldd"
   cat "/tmp/${exe}.ldd"
