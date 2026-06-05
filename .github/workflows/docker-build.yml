@@ -6,10 +6,13 @@ on:
     branches: [master, develop]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   docker-build:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 120
 
     steps:
       - name: Checkout
