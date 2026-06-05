@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+STARTUP_TIMEOUT=10
+
 cd /opt/wrf/run
 
 for exe in real.exe wrf.exe; do
@@ -18,7 +20,7 @@ for exe in real.exe wrf.exe; do
   fi
 
   set +e
-  timeout 10 "./${exe}" > "/tmp/${exe}.startup.log" 2>&1
+  timeout "${STARTUP_TIMEOUT}" "./${exe}" > "/tmp/${exe}.startup.log" 2>&1
   rc=$?
   set -e
 

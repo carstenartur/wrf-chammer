@@ -12,6 +12,12 @@ This repository includes a Docker-based reproducible build that generates `real.
 docker build -t wrf-reproducible .
 ```
 
+Optional Ubuntu base override:
+
+```bash
+docker build --build-arg UBUNTU_VERSION=22.04 -t wrf-reproducible .
+```
+
 The Docker build invokes `ci/build-wrf.sh` inside the builder stage so the same build logic can be reused by Docker and CI.
 
 ## Verification
