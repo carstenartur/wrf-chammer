@@ -62,26 +62,43 @@ containing the three WPS executables.
 
 ## Relationship between Dockerfile and Dockerfile.wps
 
-| File | WRF build system | WRF source | Produces |
-|---|---|---|---|
-| `Dockerfile` | CMake (`configure_new` / `compile_new`) | this repository | `real.exe`, `wrf.exe` in `/opt/wrf/run` |
-| `Dockerfile.wps` | classic Makefile (`configure` / `compile`) | this repository | `geogrid.exe`, `ungrib.exe`, `metgrid.exe` in `/opt/wps` |
+| File | WRF build system | WRF source | WRF version | Produces |
+|---|---|---|---|---|
+| `Dockerfile` | CMake (`configure_new` / `compile_new`) | this repository | 4.7.1 | `real.exe`, `wrf.exe` in `/opt/wrf/run` |
+| `Dockerfile.wps` | classic Makefile (`configure` / `compile`) | this repository | 4.7.1 | `geogrid.exe`, `ungrib.exe`, `metgrid.exe` in `/opt/wps` |
+
+Both images always use the WRF source from **this repository** (WRF 4.7.1), not
+an external release. Only WPS itself is cloned from the official upstream
+repository because WPS is not part of this fork.
 
 The two images are **independent** — each runs a full WRF build from source. They
 cannot share a build artifact because WPS requires the classic Makefile build of
 WRF (it links against `main/libwrflib.a` and reads `configure.wrf` to determine
 compiler flags and build settings), while the WRF simulation image uses the
-newer CMake build.
-
-Both images always use the WRF source from **this repository** (not an external
-release). Only WPS itself is cloned from the official upstream repository because
-WPS is not part of this fork.
+newer CMake build. The separate build is only needed for the different artifact
+types; both use the exact same WRF source state.
 
 ## WRF / WPS version compatibility
 
-WPS 4.x is compatible with WRF 4.x. The WPS release to use is set via the
-`WPS_VERSION` build argument (default: `4.5`). The WRF version is always the
-current state of this repository.
+| Component | Version | Source |
+|---|---|---|
+| WRF (this fork) | 4.7.1 | this repository |
+| WPS | 4.6.0 | cloned from upstream (`v4.6.0`) |
+
+**WPS version rationale:** WPS 4.6.0 is the latest available WPS release (no
+WPS 4.7.x release exists at the time of this build). WPS 4.6.0 is compatible
+with WRF 4.7.1; the WPS/WRF versioning follows the same major series and minor
+releases are forward-compatible within the 4.x line.
+
+The WPS release to use is set via the `WPS_VERSION` build argument (default:
+`4.6.0`).
+
+## Jasper (GRIB2 JPEG2000 support)
+
+The `libjasper-dev` package was removed from Ubuntu 22.04's package
+repositories. Jasper is therefore built from source inside the Docker builder
+stage using CMake and installed to `/opt/jasper`. The jasper version is
+controlled by the `JASPER_VERSION` build argument (default: `4.2.4`).
 
 ## Prerequisites
 
@@ -98,7 +115,8 @@ Optional overrides:
 ```bash
 docker build -f Dockerfile.wps \
   --build-arg UBUNTU_VERSION=22.04 \
-  --build-arg WPS_VERSION=4.5 \
+  --build-arg WPS_VERSION=4.6.0 \
+  --build-arg JASPER_VERSION=4.2.4 \
   -t wps-reproducible .
 ```
 
@@ -118,9 +136,10 @@ The verification checks:
 
 A full preprocessing run is not expected in this verification step.
 
-The runtime image installs the required shared-library packages for the linked binaries:
+The runtime image includes jasper shared libraries (copied from the builder
+stage) and the following shared-library packages:
 
-- `libjasper4`
+- jasper (built from source, installed to `/opt/jasper`)
 - `libgfortran5`
 - `libgomp1`
 - `libnetcdf19`

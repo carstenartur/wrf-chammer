@@ -5,15 +5,18 @@
 #   WRF_DIR   – path to a compiled WRF source tree (Makefile build)
 #
 # Optional environment (GRIB2 support via JasPer):
-#   JASPERINC – JasPer include directory  (default: /usr/include)
-#   JASPERLIB – JasPer library directory  (default: /usr/lib/x86_64-linux-gnu)
+#   JASPERINC – JasPer include directory  (default: /opt/jasper/include)
+#   JASPERLIB – JasPer library directory  (default: /opt/jasper/lib)
 #   NETCDF    – NetCDF installation prefix (default: /usr)
+#
+# Note: libjasper-dev is not available in Ubuntu 22.04 repositories.
+# Jasper is built from source and installed to /opt/jasper in Dockerfile.wps.
 set -eu
 
 : "${WRF_DIR:=/src/wrf}"
 : "${NETCDF:=/usr}"
-: "${JASPERINC:=/usr/include}"
-: "${JASPERLIB:=/usr/lib/x86_64-linux-gnu}"
+: "${JASPERINC:=/opt/jasper/include}"
+: "${JASPERLIB:=/opt/jasper/lib}"
 
 export WRF_DIR NETCDF JASPERINC JASPERLIB
 
