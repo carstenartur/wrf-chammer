@@ -18,9 +18,9 @@ for exe in ideal.exe wrf.exe; do
 done
 
 sed -i \
-  -e 's/^[[:space:]]*run_minutes[[:space:]]*=.*/ run_minutes                         = 5,/' \
-  -e 's/^[[:space:]]*end_minute[[:space:]]*=.*/ end_minute                          = 5,   5,   5,/' \
-  -e 's/^[[:space:]]*history_interval[[:space:]]*=.*/ history_interval                    = 5,    5,    5,/' \
+  -e 's/^\([[:space:]]*run_minutes[[:space:]]*=[[:space:]]*\).*/\15,/' \
+  -e 's/^\([[:space:]]*end_minute[[:space:]]*=[[:space:]]*\).*/\15,   5,   5,/' \
+  -e 's/^\([[:space:]]*history_interval[[:space:]]*=[[:space:]]*\).*/\15,    5,    5,/' \
   namelist.input
 grep -Eq '^[[:space:]]*run_minutes[[:space:]]*=[[:space:]]*5,' namelist.input
 grep -Eq '^[[:space:]]*end_minute[[:space:]]*=[[:space:]]*5,[[:space:]]*5,[[:space:]]*5,' namelist.input
@@ -55,16 +55,7 @@ if [ ! -s wrfinput_d01 ]; then
   exit 1
 fi
 
-wrfout_file=""
-for f in wrfout_d01_*; do
-  if [ "${f}" = "wrfout_d01_*" ]; then
-    continue
-  fi
-  if [ -f "${f}" ]; then
-    wrfout_file="${f}"
-    break
-  fi
-done
+wrfout_file="$(find . -maxdepth 1 -type f -name 'wrfout_d01_*' -print -quit | sed 's#^\./##')"
 if [ -z "${wrfout_file}" ] || [ ! -s "${wrfout_file}" ]; then
   echo "Smoke test failed: wrfout_d01 output was not created" >&2
   exit 1
