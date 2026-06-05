@@ -1,0 +1,25 @@
+name: Docker WPS Reproducible Build
+
+on:
+  pull_request:
+  push:
+    branches: [master, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  docker-wps-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build WPS Docker image
+        run: docker build -f Dockerfile.wps --tag wps-reproducible .
+
+      - name: Verify WPS runtime dependencies and startup
+        run: docker run --rm wps-reproducible /usr/local/bin/verify-wps-runtime.sh

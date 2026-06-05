@@ -1,0 +1,97 @@
+# syntax=docker/dockerfile:1
+# Reproducible Docker build for WPS (WRF Preprocessing System).
+#
+# Produces three executables in /opt/wps:
+#   geogrid.exe  – interpolates static/geographical data to the model domain
+#   ungrib.exe   – decodes GRIB/GRIB2 meteorological data
+#   metgrid.exe  – horizontally interpolates meteorological data to the domain
+#
+# Build arguments:
+#   UBUNTU_VERSION  – Ubuntu base image tag        (default: 22.04)
+#   WRF_VERSION     – WRF release tag to clone     (default: 4.5.2)
+#   WPS_VERSION     – WPS release tag to clone     (default: 4.5)
+#
+# Usage:
+#   docker build -f Dockerfile.wps -t wps-reproducible .
+#   docker run --rm wps-reproducible /usr/local/bin/verify-wps-runtime.sh
+
+ARG UBUNTU_VERSION=22.04
+ARG WRF_VERSION=4.5.2
+ARG WPS_VERSION=4.5
+
+# ---------------------------------------------------------------------------
+# Builder stage: compile WRF (Makefile build, required by WPS) then WPS
+# ---------------------------------------------------------------------------
+FROM ubuntu:${UBUNTU_VERSION} AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        csh \
+        file \
+        git \
+        gfortran \
+        libjasper-dev \
+        libnetcdf-dev \
+        libnetcdff-dev \
+        m4 \
+        perl \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG WRF_VERSION
+ARG WPS_VERSION
+
+# Clone WRF and build the library that WPS links against.
+# configure option 34 = Linux x86_64 GNU gfortran (serial); nesting answer 1 = basic nesting.
+RUN git clone --depth=1 --branch v${WRF_VERSION} \
+        https://github.com/wrf-model/WRF /src/wrf \
+    && git -C /src/wrf submodule update --init --recursive
+
+WORKDIR /src/wrf
+RUN export NETCDF=/usr \
+    && export NETCDF_classic=1 \
+    && printf '34\n1\n' | ./configure \
+    && ./compile wrflib 2>&1 | tee /tmp/build_wrf_for_wps.log \
+    && test -f /src/wrf/main/libwrflib.a
+
+# Clone WPS and compile it using the WRF library built above.
+RUN git clone --depth=1 --branch v${WPS_VERSION} \
+        https://github.com/wrf-model/WPS /src/wps
+
+WORKDIR /src/wps
+COPY ci/build-wps.sh /usr/local/bin/build-wps.sh
+RUN chmod +x /usr/local/bin/build-wps.sh \
+    && WRF_DIR=/src/wrf /usr/local/bin/build-wps.sh
+
+# ---------------------------------------------------------------------------
+# Runtime image: only the three WPS executables and their shared libraries
+# ---------------------------------------------------------------------------
+FROM ubuntu:${UBUNTU_VERSION}
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libjasper4 \
+        libgfortran5 \
+        libgomp1 \
+        libnetcdf19 \
+        libnetcdff7 \
+        libpng16-16 \
+        libstdc++6 \
+        zlib1g \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /opt/wps
+COPY --from=builder /src/wps/geogrid/src/geogrid.exe /opt/wps/
+COPY --from=builder /src/wps/metgrid/src/metgrid.exe /opt/wps/
+COPY --from=builder /src/wps/ungrib/src/ungrib.exe   /opt/wps/
+COPY ci/verify-wps-runtime.sh /usr/local/bin/verify-wps-runtime.sh
+
+RUN chmod +x /usr/local/bin/verify-wps-runtime.sh \
+    && /usr/local/bin/verify-wps-runtime.sh
+
+WORKDIR /opt/wps
