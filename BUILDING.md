@@ -55,9 +55,33 @@ The runtime image installs the required shared-library packages for the linked b
 
 # Building WPS in Docker
 
-This repository includes a dedicated `Dockerfile.wps` that clones the official WPS and a
-compatible WRF release from GitHub, compiles them inside the builder stage, and produces a
-lean runtime image containing only the three WPS executables.
+This repository includes a dedicated `Dockerfile.wps` that builds WRF from the
+**repository source** using the classic Makefile build (required by WPS), clones
+WPS from the official upstream repository, and delivers a lean runtime image
+containing the three WPS executables.
+
+## Relationship between Dockerfile and Dockerfile.wps
+
+| File | WRF build system | WRF source | Produces |
+|---|---|---|---|
+| `Dockerfile` | CMake (`configure_new` / `compile_new`) | this repository | `real.exe`, `wrf.exe` in `/opt/wrf/run` |
+| `Dockerfile.wps` | classic Makefile (`configure` / `compile`) | this repository | `geogrid.exe`, `ungrib.exe`, `metgrid.exe` in `/opt/wps` |
+
+The two images are **independent** — each runs a full WRF build from source. They
+cannot share a build artifact because WPS requires the classic Makefile build of
+WRF (it links against `main/libwrflib.a` and reads `configure.wrf` to determine
+compiler flags and build settings), while the WRF simulation image uses the
+newer CMake build.
+
+Both images always use the WRF source from **this repository** (not an external
+release). Only WPS itself is cloned from the official upstream repository because
+WPS is not part of this fork.
+
+## WRF / WPS version compatibility
+
+WPS 4.x is compatible with WRF 4.x. The WPS release to use is set via the
+`WPS_VERSION` build argument (default: `4.5`). The WRF version is always the
+current state of this repository.
 
 ## Prerequisites
 
@@ -74,13 +98,12 @@ Optional overrides:
 ```bash
 docker build -f Dockerfile.wps \
   --build-arg UBUNTU_VERSION=22.04 \
-  --build-arg WRF_VERSION=4.5.2 \
   --build-arg WPS_VERSION=4.5 \
   -t wps-reproducible .
 ```
 
-The builder stage runs `ci/build-wps.sh` inside the WPS source tree so the same build logic
-can be reused by Docker and CI.
+The builder stage runs `ci/build-wps.sh` inside the WPS source tree so the same
+build logic can be reused by Docker and CI.
 
 ## Verification
 
