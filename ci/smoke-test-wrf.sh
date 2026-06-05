@@ -2,7 +2,7 @@
 set -eu
 
 SMOKE_DIR="${SMOKE_DIR:-/tmp/wrf-smoke-test}"
-CASE_DIR="${CASE_DIR:-${WRF_CASE_DIR:-/opt/wrf/test/em_quarter_ss}}"
+CASE_DIR="${CASE_DIR:-${WRF_CASE_DIR:-/opt/wrf-smoke/test/em_quarter_ss}}"
 IDEAL_TIMEOUT="${IDEAL_TIMEOUT:-120}"
 WRF_TIMEOUT="${WRF_TIMEOUT:-300}"
 
@@ -61,12 +61,8 @@ if [ -z "${wrfout_file}" ] || [ ! -s "${wrfout_file}" ]; then
   exit 1
 fi
 
-if [ ! -f rsl.error.0000 ]; then
-  echo "Smoke test failed: rsl.error.0000 was not created" >&2
-  exit 1
-fi
-
-if ! grep -q "SUCCESS COMPLETE WRF" rsl.error.0000; then
+if ! grep -q "SUCCESS COMPLETE WRF" wrf.log 2>/dev/null \
+  && ! grep -q "SUCCESS COMPLETE WRF" rsl.error.0000 2>/dev/null; then
   echo "Smoke test failed: WRF did not report successful completion" >&2
   exit 1
 fi

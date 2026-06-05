@@ -31,7 +31,19 @@ The verification checks:
 
 - runtime dependencies via `ldd`
 - that `real.exe` and `wrf.exe` can be started in the final runtime image
-- a short `ideal.exe` + `wrf.exe` simulation (`test/em_quarter_ss`) and output file creation (`wrfinput_d01`, `wrfout_d01_*`)
+- a short `ideal.exe` + `wrf.exe` simulation and output file creation (`wrfinput_d01`, `wrfout_d01_*`)
+
+### Smoke-test case placement strategy
+
+The runtime image produced by `Dockerfile` only installs `/opt/wrf/test/em_real` from the default build (`WRF_CASE=EM_REAL`), so `/opt/wrf/test/em_quarter_ss` is not available there.
+
+To keep the runtime image focused while still supporting an end-to-end smoke simulation, the builder stage performs a second CMake build with `WRF_CASE=EM_QUARTER_SS` into `/opt/wrf-smoke`, and the runtime stage copies only the required smoke artifacts:
+
+- `/opt/wrf-smoke/bin/ideal`
+- `/opt/wrf-smoke/bin/wrf`
+- `/opt/wrf-smoke/test/em_quarter_ss`
+
+The smoke script runs against `/opt/wrf-smoke/test/em_quarter_ss`, ensuring it uses only files that are explicitly present in the runtime image.
 
 The runtime image installs the required shared-library packages for the linked binaries:
 
