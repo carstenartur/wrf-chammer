@@ -2,7 +2,7 @@
 set -eu
 
 SMOKE_DIR="${SMOKE_DIR:-/tmp/wrf-smoke-test}"
-CASE_DIR="${WRF_CASE_DIR:-/opt/wrf/test/em_quarter_ss}"
+CASE_DIR="${CASE_DIR:-${WRF_CASE_DIR:-/opt/wrf/test/em_quarter_ss}}"
 IDEAL_TIMEOUT="${IDEAL_TIMEOUT:-120}"
 WRF_TIMEOUT="${WRF_TIMEOUT:-300}"
 
@@ -12,7 +12,7 @@ cd "${SMOKE_DIR}"
 
 for exe in ideal.exe wrf.exe; do
   if [ ! -x "${exe}" ]; then
-    echo "Missing executable: ${CASE_DIR}/${exe}" >&2
+    echo "Missing executable: ${SMOKE_DIR}/${exe}" >&2
     exit 1
   fi
 done
@@ -23,8 +23,29 @@ sed -i \
   -e 's/^[[:space:]]*history_interval[[:space:]]*=.*/ history_interval                    = 5,    5,    5,/' \
   namelist.input
 
+set +e
 timeout "${IDEAL_TIMEOUT}" ./ideal.exe > ideal.log 2>&1
+ideal_rc=$?
+set -e
+if [ "${ideal_rc}" -eq 124 ]; then
+  echo "Smoke test failed: ideal.exe timed out after ${IDEAL_TIMEOUT}s" >&2
+  exit 1
+elif [ "${ideal_rc}" -ne 0 ]; then
+  echo "Smoke test failed: ideal.exe exited with status ${ideal_rc}" >&2
+  exit 1
+fi
+
+set +e
 timeout "${WRF_TIMEOUT}" ./wrf.exe > wrf.log 2>&1
+wrf_rc=$?
+set -e
+if [ "${wrf_rc}" -eq 124 ]; then
+  echo "Smoke test failed: wrf.exe timed out after ${WRF_TIMEOUT}s" >&2
+  exit 1
+elif [ "${wrf_rc}" -ne 0 ]; then
+  echo "Smoke test failed: wrf.exe exited with status ${wrf_rc}" >&2
+  exit 1
+fi
 
 if [ ! -s wrfinput_d01 ]; then
   echo "Smoke test failed: wrfinput_d01 was not created" >&2
