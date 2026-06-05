@@ -57,6 +57,9 @@ fi
 
 wrfout_file=""
 for f in wrfout_d01_*; do
+  if [ "${f}" = "wrfout_d01_*" ]; then
+    continue
+  fi
   if [ -f "${f}" ]; then
     wrfout_file="${f}"
     break
@@ -67,7 +70,12 @@ if [ -z "${wrfout_file}" ] || [ ! -s "${wrfout_file}" ]; then
   exit 1
 fi
 
-if [ ! -f rsl.error.0000 ] || ! grep -q "SUCCESS COMPLETE WRF" rsl.error.0000; then
+if [ ! -f rsl.error.0000 ]; then
+  echo "Smoke test failed: rsl.error.0000 was not created" >&2
+  exit 1
+fi
+
+if ! grep -q "SUCCESS COMPLETE WRF" rsl.error.0000; then
   echo "Smoke test failed: WRF did not report successful completion" >&2
   exit 1
 fi
