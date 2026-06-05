@@ -25,3 +25,6 @@ jobs:
 
       - name: Verify runtime dependencies and startup
         run: docker run --rm wrf-reproducible /usr/local/bin/verify-wrf-runtime.sh
+
+      - name: Run WRF smoke-test simulation
+        run: docker run --rm wrf-reproducible /usr/local/bin/smoke-test-wrf.sh

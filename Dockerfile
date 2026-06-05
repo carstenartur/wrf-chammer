@@ -24,7 +24,9 @@ WORKDIR /src/wrf
 COPY . .
 
 RUN git submodule update --init --recursive \
-    && ./ci/build-wrf.sh
+    && ./ci/build-wrf.sh \
+    && ./configure_new -p GNU -x -d _build_smoke -i /opt/wrf-smoke -- -DWRF_CASE=EM_QUARTER_SS \
+    && ./compile_new _build_smoke -j"$(nproc)"
 
 FROM ubuntu:${UBUNTU_VERSION}
 
@@ -40,9 +42,15 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /opt/wrf /opt/wrf
+RUN mkdir -p /opt/wrf-smoke/bin /opt/wrf-smoke/test
+COPY --from=builder /opt/wrf-smoke/bin/ideal /opt/wrf-smoke/bin/ideal
+COPY --from=builder /opt/wrf-smoke/bin/wrf /opt/wrf-smoke/bin/wrf
+COPY --from=builder /opt/wrf-smoke/test/em_quarter_ss /opt/wrf-smoke/test/em_quarter_ss
 COPY ci/verify-wrf-runtime.sh /usr/local/bin/verify-wrf-runtime.sh
+COPY ci/smoke-test-wrf.sh /usr/local/bin/smoke-test-wrf.sh
 
 RUN chmod +x /usr/local/bin/verify-wrf-runtime.sh \
+    /usr/local/bin/smoke-test-wrf.sh \
     && /usr/local/bin/verify-wrf-runtime.sh
 
 WORKDIR /opt/wrf/run
