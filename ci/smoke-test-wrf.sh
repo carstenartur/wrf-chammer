@@ -55,8 +55,14 @@ if [ ! -s wrfinput_d01 ]; then
   exit 1
 fi
 
-wrfout_file="$(ls -1 wrfout_d01_* 2>/dev/null | sort | head -n 1)"
-if [ -z "${wrfout_file}" ] || [ ! -s "./${wrfout_file}" ]; then
+wrfout_file=""
+for f in wrfout_d01_*; do
+  if [ -f "${f}" ]; then
+    wrfout_file="${f}"
+    break
+  fi
+done
+if [ -z "${wrfout_file}" ] || [ ! -s "${wrfout_file}" ]; then
   echo "Smoke test failed: wrfout_d01 output was not created" >&2
   exit 1
 fi
