@@ -60,6 +60,7 @@ RUN apt-get update \
         libpng-dev \
         m4 \
         perl \
+        python3 \
     && rm -rf /var/lib/apt/lists/*
 
 # WPS configure checks for $NETCDF/lib/libnetcdff.a; Ubuntu provides multiarch
