@@ -1,0 +1,79 @@
+name: ERA5/WPS Integration Test
+
+# Proves that the full WPS pipeline (GRIB → ungrib → metgrid → met_em) works
+# using the bundled mini GRIB dataset.  No CDS credentials or internet access
+# are required during the WPS run itself; only the Docker build stage needs
+# the network to clone upstream WPS from GitHub.
+#
+# Runtime budget:
+#   First run  – up to 90 minutes (WRF + WPS compile from source).
+#   Warm cache – target < 5 minutes (Docker layer cache restored from GHA cache).
+
+on:
+  pull_request:
+  push:
+    branches: [master, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wps-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ── Build wps-reproducible ──────────────────────────────────────────────
+      # Uses GHA Docker layer cache so subsequent runs skip the WRF + WPS
+      # compile and finish in a few minutes.
+      - name: Build wps-reproducible
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.wps
+          tags: wps-reproducible:latest
+          load: true
+          cache-from: type=gha,scope=wps-reproducible
+          cache-to: type=gha,scope=wps-reproducible,mode=max
+
+      # ── Build era5-pipeline ─────────────────────────────────────────────────
+      # Adds ncdump, python3, and WPS tables (Vtable, METGRID.TBL, …) on top of
+      # the wps-reproducible runtime image.
+      - name: Build era5-pipeline
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.era5
+          build-args: |
+            WPS_IMAGE=wps-reproducible:latest
+          tags: era5-pipeline:latest
+          load: true
+          cache-from: type=gha,scope=era5-pipeline
+          cache-to: type=gha,scope=era5-pipeline,mode=max
+
+      # ── Run the integration test ────────────────────────────────────────────
+      # The test script runs ungrib.exe and metgrid.exe inside the container
+      # with --network=none (no internet), then verifies the met_em output.
+      - name: Run ERA5/WPS integration test
+        env:
+          ERA5_IMAGE: era5-pipeline:latest
+          WORKDIR: /tmp/wps-integration-workdir
+        run: sh ci/test-era5-wps-integration.sh
+
+      # ── Upload logs on failure ──────────────────────────────────────────────
+      - name: Upload WPS logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wps-integration-logs
+          path: /tmp/wps-integration-workdir/
+          if-no-files-found: ignore

@@ -1,0 +1,35 @@
+{
+  "description": "Expected outputs from the ERA5/WPS integration test using the mini dataset.",
+  "timestamp": "2024-01-15T00:00:00Z",
+  "grib_input": {
+    "pressure.grib": {
+      "messages": 10,
+      "paramIds": [129, 130, 131, 132, 133],
+      "levels_hPa": [500, 850],
+      "grid": "3x3, 2-degree regular lat/lon, 48-52N 8-12E"
+    },
+    "surface.grib": {
+      "messages": 6,
+      "paramIds": [134, 165, 166, 167, 168, 235],
+      "grid": "3x3, 2-degree regular lat/lon, 48-52N 8-12E"
+    }
+  },
+  "ungrib_outputs": {
+    "PLEV": "PLEV:2024-01-15_00",
+    "SFC": "SFC:2024-01-15_00"
+  },
+  "metgrid_outputs": [
+    "met_em.d01.2024-01-15_00:00:00.nc"
+  ],
+  "required_variables": ["TT", "UU", "VV", "GHT", "PSFC"],
+  "wps_domain": {
+    "map_proj": "lat-lon",
+    "e_we": 5,
+    "e_sn": 5,
+    "dx_deg": 0.5,
+    "dy_deg": 0.5,
+    "ref_lat": 50.0,
+    "ref_lon": 10.0,
+    "note": "5x5 domain, 0.5-degree spacing, centred on 50N 10E (49-51N, 9-11E)"
+  }
+}
