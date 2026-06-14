@@ -29,6 +29,7 @@ This is the main directory for the WRF Version 4 source code release.
 ======================================
 
 Other README files are located in the WRF/doc directory:
+doc/ARCHITECTURE.md
 doc/README.cmake_build
 doc/README.crtm
 doc/README.CTSM
