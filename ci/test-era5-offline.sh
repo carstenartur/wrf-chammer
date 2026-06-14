@@ -140,7 +140,7 @@ for required in \
   "${WPS_WORKDIR}/SYNTH:2026-01-01_00" \
   "${WPS_WORKDIR}/met_em.d01.2026-01-01_00:00:00.nc" \
   "${WPS_WORKDIR}/GEOGRID.TBL" \
-  "${WPS_WORKDIR}/METGRID.TBL"; do
+  "${WPS_WORKDIR}/metgrid/METGRID.TBL"; do
   [ -f "${required}" ] || {
     echo "Missing expected prepare-era5-wps output: ${required}" >&2
     exit 1
