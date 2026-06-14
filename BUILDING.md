@@ -251,12 +251,27 @@ The pipeline will:
 4. rewrite `fg_name` in `namelist.wps` to match the downloaded prefixes
 5. run `metgrid.exe` and verify that `met_em.d*` files were produced
 
+### Vtable decision for ERA5
+
+The ERA5 workflow intentionally links `Vtable.ERA-interim.pl`. This is the
+supported table in upstream WPS assets for ERA5-style pressure/surface inputs
+and keeps the preprocessing path aligned with the established WPS ERA guidance
+without carrying a custom table variant in this repository.
+
 The runtime image does not bundle `WPS_GEOG`, so `geogrid.exe` requires a
 working `geog_data_path` in `namelist.wps`.
 
 ## GitHub Actions workflow
 
-`.github/workflows/docker-era5-pipeline.yml` provides a manual workflow that:
+CI and manual download responsibilities are intentionally split:
+
+- `.github/workflows/era5-offline-dry-run.yml` runs in CI and validates ERA5
+  scripts in offline mode (JSON config validation, manifest generation, and
+  cached dummy GRIB detection) without CDS credentials or network download.
+- `.github/workflows/docker-era5-pipeline.yml` is manual and performs the real
+  CDS-backed download flow.
+
+The manual `.github/workflows/docker-era5-pipeline.yml` workflow:
 
 - restores a cache directory for downloaded ERA5 files
 - builds `wps-reproducible` and `era5-pipeline`

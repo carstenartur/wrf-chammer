@@ -1,0 +1,24 @@
+name: ERA5 Offline Dry Run
+
+on:
+  pull_request:
+  push:
+    branches: [master, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  era5-offline-dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Run offline ERA5 script checks
+        run: sh ci/test-era5-offline.sh

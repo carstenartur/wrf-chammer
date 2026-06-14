@@ -5,9 +5,6 @@ import hashlib
 import json
 from pathlib import Path
 
-import cdsapi
-
-
 def parse_args():
     parser = argparse.ArgumentParser(description="Download ERA5 requests described in a JSON file.")
     parser.add_argument("--config", required=True, help="Path to the JSON download configuration.")
@@ -33,6 +30,14 @@ def load_config(config_path):
 
 
 def build_client():
+    try:
+        import cdsapi
+    except ModuleNotFoundError as exc:
+        raise SystemExit(
+            "cdsapi is required for uncached ERA5 downloads. "
+            "Install it or pre-populate target files for offline runs."
+        ) from exc
+
     kwargs = {}
     return cdsapi.Client(**kwargs)
 
@@ -46,7 +51,7 @@ def main():
     config, config_text = load_config(config_path)
     manifest_path = Path(args.manifest).resolve() if args.manifest else output_dir / "era5-manifest.json"
 
-    client = build_client()
+    client = None
     outputs = []
 
     for name, request_def in config["requests"].items():
@@ -69,6 +74,8 @@ def main():
         cached = target_path.exists() and target_path.stat().st_size > 0
 
         if not cached:
+            if client is None:
+                client = build_client()
             if temp_path.exists():
                 temp_path.unlink()
             client.retrieve(dataset, request_body, str(temp_path))

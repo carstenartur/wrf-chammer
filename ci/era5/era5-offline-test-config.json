@@ -1,0 +1,14 @@
+{
+  "requests": {
+    "dummy_cached_grib": {
+      "dataset": "reanalysis-era5-single-levels",
+      "target": "dummy-era5.grib",
+      "ungrib_prefix": "SFC",
+      "request": {
+        "product_type": [
+          "reanalysis"
+        ]
+      }
+    }
+  }
+}
