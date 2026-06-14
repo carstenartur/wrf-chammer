@@ -11,6 +11,9 @@ on:
   pull_request:
     types:    [ opened, synchronize, reopened, labeled ]
 
+permissions:
+  contents: read
+
 # https://docs.github.com/en/actions/sharing-automations/reusing-workflows#supported-keywords-for-jobs-that-call-a-reusable-workflow
 # Also https://stackoverflow.com/a/74959635
 # TL;DR - For public repositories the safest approach will be to use the default read permissions, but at the cost
