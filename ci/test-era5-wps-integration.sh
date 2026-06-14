@@ -72,9 +72,10 @@ JSON
 echo "Running ungrib.exe and metgrid.exe inside ${ERA5_IMAGE} ..."
 docker run --rm \
   --network=none \
+  --entrypoint python3 \
   -v "${WORKDIR}:/work" \
   "${ERA5_IMAGE}" \
-  python3 /usr/local/bin/prepare-era5-wps.py \
+  /usr/local/bin/prepare-era5-wps.py \
     --manifest      /work/manifest.json \
     --workdir       /work \
     --wps-dir       /opt/wps \
@@ -85,13 +86,14 @@ docker run --rm \
 echo "Verifying ungrib and metgrid outputs ..."
 docker run --rm \
   --network=none \
+  --entrypoint sh \
   -v "${WORKDIR}:/work" \
   -e ERA5_MANIFEST=/work/manifest.json \
   -e WPS_WORKDIR=/work \
   -e VERIFY_UNGRIB=1 \
   -e VERIFY_METGRID=1 \
   "${ERA5_IMAGE}" \
-  sh /usr/local/bin/verify-era5-outputs.sh
+  /usr/local/bin/verify-era5-outputs.sh
 
 # ── Check required meteorological variables ──────────────────────────────────
 # Write a small Python helper into the work directory so it can be executed
@@ -132,8 +134,9 @@ PY
 echo "Checking required variables in met_em output ..."
 docker run --rm \
   --network=none \
+  --entrypoint python3 \
   -v "${WORKDIR}:/work" \
   "${ERA5_IMAGE}" \
-  python3 /work/check-vars.py
+  /work/check-vars.py
 
 echo "ERA5/WPS integration test passed."
