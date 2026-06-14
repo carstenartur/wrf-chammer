@@ -39,7 +39,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: Dockerfile.wps
+          file: ./Dockerfile.wps
           tags: wps-reproducible:latest
           load: true
           cache-from: type=gha,scope=wps-reproducible
@@ -52,7 +52,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: Dockerfile.era5
+          file: ./Dockerfile.era5
           build-args: |
             WPS_IMAGE=wps-reproducible:latest
           tags: era5-pipeline:latest
