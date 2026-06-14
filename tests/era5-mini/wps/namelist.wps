@@ -20,7 +20,8 @@
  map_proj = 'lat-lon',
  ref_lat   = 50.0,
  ref_lon   = 10.0,
- geog_data_path = '/nonexistent',
+ geog_data_path = '/skip-geogrid',
+ ! geogrid.exe is not run in this integration test (no static GEOG data needed).
 /
 
 &ungrib

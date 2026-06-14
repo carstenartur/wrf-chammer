@@ -50,6 +50,10 @@ def _set_grid(sid):
     eccodes.codes_set(sid, "longitudeOfLastGridPointInDegrees", LON_LAST)
     eccodes.codes_set(sid, "iDirectionIncrementInDegrees", DI)
     eccodes.codes_set(sid, "jDirectionIncrementInDegrees", DJ)
+    # Scanning mode 0: rows go west→east, columns go north→south.
+    # This matches standard ECMWF ERA5 convention (first point = top-left).
+    eccodes.codes_set(sid, "jScansPositively", 0)
+    eccodes.codes_set(sid, "iScansNegatively", 0)
 
 
 def make_pl_msg(param_id, level_hpa, fill_value):

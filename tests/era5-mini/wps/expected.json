@@ -30,6 +30,6 @@
     "dy_deg": 0.5,
     "ref_lat": 50.0,
     "ref_lon": 10.0,
-    "note": "5x5 domain, 0.5-degree spacing, centred on 50N 10E (49-51N, 9-11E)"
+    "note": "5x5 domain, 0.5-degree spacing, centered on 50N 10E (49-51N, 9-11E)"
   }
 }
