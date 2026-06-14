@@ -37,3 +37,11 @@ wrfout_d*
 rsl.out.*
 rsl.error.*
 *.log
+FILE:*
+PFILE:*
+geo_em.d*.nc
+met_em.d*
+
+# ERA5/WPS pipeline work directories
+.era5-cache/
+.wps-work/

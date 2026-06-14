@@ -170,3 +170,98 @@ stage) and the following shared-library packages:
 
 - no bundled GEOG static data or meteorological input files
 - no full preprocessing run in CI or Docker verification
+
+---
+
+# ERA5 download and WPS preprocessing pipeline
+
+This repository includes an additive ERA5 pipeline container that reuses the
+`Dockerfile.wps` runtime image, downloads ERA5 GRIB files with the Copernicus
+CDS API, and can run `geogrid.exe`, `ungrib.exe`, and `metgrid.exe` in a user
+supplied WPS working directory.
+
+## Inputs
+
+- Copernicus CDS credentials via `CDSAPI_KEY` (and optional `CDSAPI_URL`)
+- a JSON download description such as `ci/era5/era5-example-config.json`
+- a WPS working directory containing `namelist.wps`
+- optional `WPS_GEOG` data when `geogrid.exe` should run
+
+An editable starter namelist is provided at `ci/era5/namelist.wps.example`.
+The example config uses two ungrib prefixes:
+
+- `PLEV` for `reanalysis-era5-pressure-levels`
+- `SFC` for `reanalysis-era5-single-levels`
+
+## Build the ERA5 pipeline image
+
+Build the WPS runtime first, then the ERA5 image that layers CDS tooling and
+WPS tables on top:
+
+```bash
+docker build -f Dockerfile.wps -t wps-reproducible .
+docker build -f Dockerfile.era5 --build-arg WPS_IMAGE=wps-reproducible -t era5-pipeline .
+```
+
+## Download only
+
+Use a bind-mounted cache directory so repeated runs reuse existing GRIB files:
+
+```bash
+mkdir -p .era5-cache/example
+docker run --rm \
+  -e CDSAPI_KEY="$CDSAPI_KEY" \
+  -e ERA5_CONFIG=/workspace/ci/era5/era5-example-config.json \
+  -e ERA5_OUTPUT_DIR=/workspace/.era5-cache/example \
+  -e ERA5_MANIFEST=/workspace/.era5-cache/example/era5-manifest.json \
+  -e RUN_PREPROCESS=0 \
+  -e RUN_VERIFY=0 \
+  -v "$PWD:/workspace" \
+  era5-pipeline
+```
+
+If the target GRIB files already exist and are non-empty, the download step is
+skipped and the manifest is refreshed in place.
+
+## Full WPS preprocessing
+
+Prepare a WPS work directory with a `namelist.wps` derived from
+`ci/era5/namelist.wps.example`, then run:
+
+```bash
+mkdir -p .wps-work
+cp ci/era5/namelist.wps.example .wps-work/namelist.wps
+docker run --rm \
+  -e CDSAPI_KEY="$CDSAPI_KEY" \
+  -e ERA5_CONFIG=/workspace/ci/era5/era5-example-config.json \
+  -e ERA5_OUTPUT_DIR=/workspace/.era5-cache/example \
+  -e ERA5_MANIFEST=/workspace/.era5-cache/example/era5-manifest.json \
+  -e WPS_WORKDIR=/workspace/.wps-work \
+  -e RUN_GEOGRID=1 \
+  -e RUN_METGRID=1 \
+  -v "$PWD:/workspace" \
+  era5-pipeline
+```
+
+The pipeline will:
+
+1. download or reuse cached ERA5 GRIB files
+2. link the bundled WPS `Vtable.ERA-interim.pl`, `GEOGRID.TBL`, and `METGRID.TBL`
+3. run `ungrib.exe` once per configured ERA5 prefix
+4. rewrite `fg_name` in `namelist.wps` to match the downloaded prefixes
+5. run `metgrid.exe` and verify that `met_em.d*` files were produced
+
+The runtime image does not bundle `WPS_GEOG`, so `geogrid.exe` requires a
+working `geog_data_path` in `namelist.wps`.
+
+## GitHub Actions workflow
+
+`.github/workflows/docker-era5-pipeline.yml` provides a manual workflow that:
+
+- restores a cache directory for downloaded ERA5 files
+- builds `wps-reproducible` and `era5-pipeline`
+- downloads ERA5 data using `CDSAPI_KEY`
+- uploads the generated manifest as a workflow artifact
+
+The workflow defaults to download-only mode because `ubuntu-latest` does not
+ship the large `WPS_GEOG` dataset needed for a full `geogrid.exe` run.

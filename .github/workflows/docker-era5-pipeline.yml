@@ -1,0 +1,73 @@
+name: ERA5 Download Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      cache_namespace:
+        description: Cache namespace for downloaded ERA5 files
+        required: true
+        default: era5-example
+        type: string
+      config_path:
+        description: Repository path to the ERA5 JSON request file
+        required: true
+        default: ci/era5/era5-example-config.json
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  era5-download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Require CDS API credentials
+        env:
+          CDSAPI_KEY: ${{ secrets.CDSAPI_KEY }}
+        run: |
+          if [ -z "${CDSAPI_KEY}" ]; then
+            echo "Set the CDSAPI_KEY repository secret before running this workflow." >&2
+            exit 1
+          fi
+
+      - name: Restore ERA5 cache
+        uses: actions/cache@v4
+        with:
+          path: .era5-cache/${{ inputs.cache_namespace }}
+          key: ${{ runner.os }}-era5-${{ inputs.cache_namespace }}-${{ hashFiles('Dockerfile.era5', 'ci/download-era5.py', 'ci/download-era5.sh', 'ci/run-era5-pipeline.sh', 'ci/era5/era5-example-config.json') }}
+
+      - name: Build WPS runtime image
+        run: docker build -f Dockerfile.wps -t wps-reproducible .
+
+      - name: Build ERA5 pipeline image
+        run: docker build -f Dockerfile.era5 --build-arg WPS_IMAGE=wps-reproducible -t era5-pipeline .
+
+      - name: Download ERA5 data
+        env:
+          CDSAPI_KEY: ${{ secrets.CDSAPI_KEY }}
+          CDSAPI_URL: ${{ secrets.CDSAPI_URL }}
+        run: |
+          mkdir -p ".era5-cache/${{ inputs.cache_namespace }}"
+          docker run --rm \
+            -e CDSAPI_KEY \
+            -e CDSAPI_URL \
+            -e ERA5_CONFIG=/workspace/${{ inputs.config_path }} \
+            -e ERA5_OUTPUT_DIR=/workspace/.era5-cache/${{ inputs.cache_namespace }} \
+            -e ERA5_MANIFEST=/workspace/.era5-cache/${{ inputs.cache_namespace }}/era5-manifest.json \
+            -e RUN_PREPROCESS=0 \
+            -e RUN_VERIFY=0 \
+            -v "$PWD:/workspace" \
+            era5-pipeline
+
+      - name: Upload ERA5 manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: era5-manifest-${{ inputs.cache_namespace }}
+          path: .era5-cache/${{ inputs.cache_namespace }}/era5-manifest.json
