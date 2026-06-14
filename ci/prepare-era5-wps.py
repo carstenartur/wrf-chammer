@@ -72,7 +72,9 @@ def main():
         symlink_force(wps_dir / exe_name, workdir / exe_name)
 
     shutil.copyfile(wps_assets_dir / "run" / "GEOGRID.TBL.ARW", workdir / "GEOGRID.TBL")
-    shutil.copyfile(wps_assets_dir / "run" / "METGRID.TBL.ARW", workdir / "METGRID.TBL")
+    metgrid_tbl_dir = workdir / "metgrid"
+    metgrid_tbl_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(wps_assets_dir / "run" / "METGRID.TBL.ARW", metgrid_tbl_dir / "METGRID.TBL")
 
     namelist_text = namelist_path.read_text(encoding="utf-8")
     prefixes = []
