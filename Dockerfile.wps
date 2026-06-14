@@ -113,6 +113,7 @@ RUN git submodule update --init --recursive \
        done \
     && if [ -z "${wrf_opt}" ]; then echo "Could not determine WRF gfortran serial configure option" >&2; cat /tmp/wrf_configure.log >&2; exit 1; fi \
     && printf 'Using WRF configure option %s\n' "${wrf_opt}" \
+    && export WRF_EM_CORE=1 \
     && ./compile wrf 2>&1 | tee /tmp/build_wrf_for_wps.log \
     && test -f /src/wrf/main/libwrflib.a
 

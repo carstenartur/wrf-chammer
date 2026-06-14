@@ -54,7 +54,9 @@ jobs:
           context: .
           file: ./Dockerfile.era5
           build-args: |
-            WPS_IMAGE=wps-reproducible:latest
+            WPS_IMAGE=wps-reproducible
+          build-contexts: |
+            wps-reproducible=docker-image://wps-reproducible:latest
           tags: era5-pipeline:latest
           load: true
           cache-from: type=gha,scope=era5-pipeline
