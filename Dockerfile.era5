@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-ARG WPS_IMAGE=wps-reproducible
+ARG WPS_IMAGE=wps-reproducible:latest
 ARG WPS_VERSION=4.6.0
 
 FROM ubuntu:22.04 AS wps-assets
