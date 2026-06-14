@@ -48,19 +48,23 @@ jobs:
       # ── Build era5-pipeline ─────────────────────────────────────────────────
       # Adds ncdump, python3, and WPS tables (Vtable, METGRID.TBL, …) on top of
       # the wps-reproducible runtime image.
+      #
+      # Uses plain `docker build` (not docker/build-push-action / buildx) because
+      # the buildx docker-container driver cannot access images from the local
+      # Docker daemon.  wps-reproducible:latest was loaded into the local daemon
+      # by the previous step (`load: true`), so the plain Docker CLI builder
+      # resolves the base image correctly without attempting a registry pull.
+      #
+      # era5-pipeline layer cache is intentionally omitted here: the Dockerfile
+      # only adds apt packages, a pip package, and static files on top of
+      # wps-reproducible, so this stage is fast even without a cache.
       - name: Build era5-pipeline
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile.era5
-          build-args: |
-            WPS_IMAGE=wps-reproducible
-          build-contexts: |
-            wps-reproducible=docker-image://wps-reproducible:latest
-          tags: era5-pipeline:latest
-          load: true
-          cache-from: type=gha,scope=era5-pipeline
-          cache-to: type=gha,scope=era5-pipeline,mode=max
+        run: |
+          docker build \
+            --build-arg WPS_IMAGE=wps-reproducible:latest \
+            -f Dockerfile.era5 \
+            -t era5-pipeline:latest \
+            .
 
       # ── Run the integration test ────────────────────────────────────────────
       # The test script runs ungrib.exe and metgrid.exe inside the container
