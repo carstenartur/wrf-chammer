@@ -158,8 +158,12 @@ def _add_f32(name, dims, data, units, description, stagger):
 
 
 # Times variable (character array, one per time step).
-# WPS convention: geo_em files use "0000-00-00_00:00:00" to mark
-# time-independent (static) geogrid data.
+# NOTE: Times = "0000-00-00_00:00:00" and SIMULATION_START_DATE = "2024-01-15_00:00:00"
+# serve different purposes and are intentionally different:
+#   - Times: WPS convention for time-independent (static) geogrid data.
+#     Real geogrid always writes "0000-00-00_00:00:00" here.
+#   - SIMULATION_START_DATE: the start_date of the WRF run this domain was
+#     prepared for, used by metgrid to verify domain/run compatibility.
 # Use np.frombuffer so each byte is stored as its actual ASCII character.
 # Do NOT use np.array(list(b"..."), dtype="S1"): in Python 3 list(bytes)
 # yields integers, which are then converted to their decimal string
