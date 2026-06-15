@@ -25,6 +25,54 @@ TEST_DATA="${REPO_ROOT}/tests/era5-mini"
 ERA5_IMAGE="${ERA5_IMAGE:-era5-pipeline}"
 WORKDIR="${WORKDIR:-/tmp/wps-integration-workdir}"
 
+# ── Helper: dump WPS diagnostics from /work inside the container ─────────────
+# Called both before the pipeline (to confirm inputs) and on failure (for logs).
+dump_diagnostics() {
+  echo ""
+  echo "════════════════════════════════════════════════════════════════"
+  echo "WPS DIAGNOSTICS"
+  echo "════════════════════════════════════════════════════════════════"
+  docker run --rm \
+    --network=none \
+    --entrypoint sh \
+    -v "${WORKDIR}:/work" \
+    "${ERA5_IMAGE}" \
+    -c '
+      set +e
+      echo "--- /work contents ---"
+      ls -la /work/
+
+      echo ""
+      echo "--- namelist.wps ---"
+      cat /work/namelist.wps 2>/dev/null || echo "(not found)"
+
+      echo ""
+      echo "--- geo_em.d01.nc header (ncdump -h) ---"
+      ncdump -h /work/geo_em.d01.nc 2>&1 | head -80 || echo "(ncdump not available or file missing)"
+
+      echo ""
+      echo "--- geo_em.d01.nc Times variable (ncdump -v Times) ---"
+      ncdump -v Times /work/geo_em.d01.nc 2>&1 || echo "(ncdump not available or Times missing)"
+
+      echo ""
+      echo "--- WPS intermediate files ---"
+      ls /work/PLEV:* /work/SFC:* /work/FILE:* 2>/dev/null || echo "(no intermediate files yet)"
+
+      echo ""
+      echo "--- ungrib.log ---"
+      cat /work/ungrib.log 2>/dev/null || echo "(no ungrib.log)"
+
+      echo ""
+      echo "--- metgrid.log ---"
+      cat /work/metgrid.log 2>/dev/null || echo "(no metgrid.log)"
+
+      echo ""
+      echo "--- rsl.error.0000 (if present) ---"
+      cat /work/rsl.error.0000 2>/dev/null || echo "(not present)"
+      echo "════════════════════════════════════════════════════════════════"
+    ' || true  # diagnostics must never mask the real failure
+}
+
 # ── Prepare work directory ───────────────────────────────────────────────────
 rm -rf "${WORKDIR}"
 mkdir -p "${WORKDIR}"
@@ -69,8 +117,13 @@ cat > "${WORKDIR}/manifest.json" <<JSON
 }
 JSON
 
+# ── Pre-run diagnostics ──────────────────────────────────────────────────────
+echo "=== Pre-run diagnostics (inputs) ==="
+dump_diagnostics
+
 # ── Run ungrib.exe + metgrid.exe ─────────────────────────────────────────────
 echo "Running ungrib.exe and metgrid.exe inside ${ERA5_IMAGE} ..."
+set +e
 docker run --rm \
   --network=none \
   --entrypoint python3 \
@@ -82,6 +135,15 @@ docker run --rm \
     --wps-dir       /opt/wps \
     --wps-assets-dir /opt/wps-assets \
     --vtable        /opt/wps-assets/Variable_Tables/Vtable.ERA-interim.pl
+PIPELINE_EXIT=$?
+set -e
+
+if [ "${PIPELINE_EXIT}" -ne 0 ]; then
+  echo ""
+  echo "ERROR: prepare-era5-wps.py failed (exit ${PIPELINE_EXIT}). Dumping post-run diagnostics ..."
+  dump_diagnostics
+  exit "${PIPELINE_EXIT}"
+fi
 
 # ── Verify ungrib and metgrid outputs ────────────────────────────────────────
 echo "Verifying ungrib and metgrid outputs ..."

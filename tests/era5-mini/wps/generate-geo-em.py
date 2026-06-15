@@ -22,6 +22,14 @@ providing all attributes metgrid.exe needs: correct projection (MAP_PROJ=6),
 dimensions (5×5), cell-centre coordinates (XLAT_M/XLONG_M), and LANDMASK.
 Static geophysical fields (terrain, vegetation, etc.) are set to plausible
 placeholder values; they do not affect the ungrib→metgrid interpolation test.
+
+IMPORTANT — Times variable:
+  geo_em.d01.nc must contain Times = "0000-00-00_00:00:00" (WPS convention for
+  time-independent static geogrid data).  Use np.frombuffer(b"...", dtype="S1")
+  to write the character array correctly.  Do NOT use
+  np.array(list(b"..."), dtype="S1"): in Python 3, list(bytes) yields integers,
+  which numpy converts to their decimal string representations before truncating
+  to one character — producing garbage like "4444..." instead of "0000...".
 """
 
 from pathlib import Path
@@ -91,7 +99,7 @@ ds.createDimension("string19", 19)
 
 # Global attributes — all entries that WPS 4.6.0 input_module.F reads
 ds.TITLE = "OUTPUT FROM GEOGRID V4.6.0"
-ds.setncattr("SIMULATION_START_DATE", "0000-00-00_00:00:00")
+ds.setncattr("SIMULATION_START_DATE", "2024-01-15_00:00:00")
 ds.setncattr("WEST-EAST_GRID_DIMENSION", np.int32(E_WE))
 ds.setncattr("SOUTH-NORTH_GRID_DIMENSION", np.int32(E_SN))
 ds.setncattr("BOTTOM-TOP_GRID_DIMENSION", np.int32(0))
@@ -149,9 +157,15 @@ def _add_f32(name, dims, data, units, description, stagger):
     v[...] = data
 
 
-# Times variable (character array, one per time step)
+# Times variable (character array, one per time step).
+# WPS convention: geo_em files use "0000-00-00_00:00:00" to mark
+# time-independent (static) geogrid data.
+# Use np.frombuffer so each byte is stored as its actual ASCII character.
+# Do NOT use np.array(list(b"..."), dtype="S1"): in Python 3 list(bytes)
+# yields integers, which are then converted to their decimal string
+# representations and truncated to one character, producing garbage values.
 tv = ds.createVariable("Times", "S1", ("Time", "string19"))
-tv[0] = np.array(list("0000-00-00_00:00:00".encode("ascii")), dtype="S1")
+tv[0, :] = np.frombuffer(b"0000-00-00_00:00:00", dtype="S1")
 
 # Lat/lon coordinate arrays
 _add_f32("XLAT_M",  ("Time", "south_north", "west_east"),            XLAT_M,  "degrees latitude",  "Latitude on mass grid",        "M")

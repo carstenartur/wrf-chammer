@@ -11,7 +11,8 @@ Minimal ECMWF GRIB1 files used by the ERA5/WPS integration test
 | `surface.grib` | 6 GRIB1 messages for near-surface fields (sp, u10, v10, t2, d2, skt) |
 | `generate-mini-grib.py` | Python script that produced these GRIB files |
 | `wps/namelist.wps` | Minimal WPS namelist matching this dataset |
-| `wps/geo_em.d01.nc` | Static WPS geogrid output fixture consumed by `metgrid.exe` |
+| `wps/geo_em.d01.nc` | Synthetic WPS geogrid output fixture consumed by `metgrid.exe` |
+| `wps/generate-geo-em.py` | Python script that produced `geo_em.d01.nc` |
 | `wps/expected.json` | Expected outputs from the integration test |
 
 ## Grid
@@ -24,6 +25,34 @@ Minimal ECMWF GRIB1 files used by the ERA5/WPS integration test
 | Latitude range | 48 N – 52 N |
 | Longitude range | 8 E – 12 E |
 | Time | 2024-01-15 00:00 UTC (single step) |
+
+## WPS domain (`wps/geo_em.d01.nc`)
+
+| Property | Value |
+|---|---|
+| Domain | 5×5 staggered (4×4 mass-point cells) |
+| Projection | Cylindrical equidistant (lat-lon, MAP_PROJ=6) |
+| Spacing | 0.5° in lat and lon |
+| Centre | 50 N, 10 E |
+| Mass-point extent | ~49.25–50.75 N, 9.25–10.75 E |
+
+`geo_em.d01.nc` is a **synthetic** minimal fixture — it is **not** produced by
+running the full `geogrid.exe` with a WPS_GEOG static dataset (which would
+require > 1 GB of data).  The file contains all WPS 4.6.0 metadata attributes
+and placeholder values for static fields (LANDMASK=1, HGT_M=0, LU_INDEX=1).
+This is sufficient to let `metgrid.exe` perform the GRIB → intermediate →
+`met_em` interpolation; it does **not** represent a meteorologically valid
+domain.
+
+The `Times` variable is deliberately `0000-00-00_00:00:00`, which is the WPS
+convention for time-independent (static) geogrid data.
+
+To regenerate `geo_em.d01.nc` after changing domain parameters:
+
+```bash
+pip install netCDF4 numpy
+python3 tests/era5-mini/wps/generate-geo-em.py
+```
 
 ## Regenerating the GRIB files
 
@@ -44,4 +73,7 @@ Running `ungrib.exe` and `metgrid.exe` against these files proves that:
 4. The core meteorological fields (`TT`, `UU`, `VV`, `GHT`, `PSFC`) are present
    and readable with `ncdump -h`.
 
-No internet access, no CDS credentials, and no large datasets are required.
+The test **does not** validate numerically correct meteorological values; it
+only ensures the GRIB → ungrib → metgrid → `met_em` pipeline executes without
+error.  No internet access, no CDS credentials, and no large datasets are
+required.
