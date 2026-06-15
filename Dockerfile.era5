@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-ARG WPS_IMAGE=wps-reproducible
+ARG WPS_IMAGE=wps-reproducible:latest
 ARG WPS_VERSION=4.6.0
 
 FROM ubuntu:22.04 AS wps-assets
@@ -15,7 +15,10 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 RUN git clone --depth=1 --branch v${WPS_VERSION} \
-        https://github.com/wrf-model/WPS /opt/wps-src
+        https://github.com/wrf-model/WPS /opt/wps-src \
+    && mkdir -p /opt/wps-src/run \
+    && cp /opt/wps-src/geogrid/GEOGRID.TBL.ARW /opt/wps-src/run/ \
+    && cp /opt/wps-src/metgrid/METGRID.TBL.ARW /opt/wps-src/run/
 
 FROM ${WPS_IMAGE}
 
