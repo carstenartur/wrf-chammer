@@ -104,6 +104,9 @@ def main():
             prefixes.append(prefix)
 
     if not args.skip_metgrid:
+        if not list(workdir.glob("geo_em.d*.nc")):
+            raise SystemExit("Missing geo_em.d*.nc required by metgrid.exe.")
+
         fg_name_value = ",".join(f"'{prefix}'" for prefix in prefixes) + ","
         namelist_text = replace_assignment(namelist_text, "fg_name", fg_name_value)
         namelist_path.write_text(namelist_text, encoding="utf-8")
