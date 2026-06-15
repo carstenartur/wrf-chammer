@@ -11,6 +11,7 @@ Minimal ECMWF GRIB1 files used by the ERA5/WPS integration test
 | `surface.grib` | 6 GRIB1 messages for near-surface fields (sp, u10, v10, t2, d2, skt) |
 | `generate-mini-grib.py` | Python script that produced these GRIB files |
 | `wps/namelist.wps` | Minimal WPS namelist matching this dataset |
+| `wps/geo_em.d01.nc` | Static WPS geogrid output fixture consumed by `metgrid.exe` |
 | `wps/expected.json` | Expected outputs from the integration test |
 
 ## Grid

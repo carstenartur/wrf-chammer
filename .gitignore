@@ -41,6 +41,7 @@ FILE:*
 PFILE:*
 geo_em.d*.nc
 met_em.d*
+!tests/era5-mini/wps/geo_em.d01.nc
 
 # ERA5/WPS pipeline work directories
 .era5-cache/

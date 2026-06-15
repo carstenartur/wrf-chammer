@@ -76,10 +76,17 @@ jobs:
         run: sh ci/test-era5-wps-integration.sh
 
       # ── Upload logs on failure ──────────────────────────────────────────────
+      - name: Package WPS logs on failure
+        if: failure()
+        run: |
+          if [ -d /tmp/wps-integration-workdir ]; then
+            tar -czf /tmp/wps-integration-logs.tar.gz -C /tmp wps-integration-workdir
+          fi
+
       - name: Upload WPS logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: wps-integration-logs
-          path: /tmp/wps-integration-workdir/
+          path: /tmp/wps-integration-logs.tar.gz
           if-no-files-found: ignore

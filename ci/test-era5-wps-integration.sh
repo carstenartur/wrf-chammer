@@ -33,6 +33,7 @@ mkdir -p "${WORKDIR}"
 cp "${TEST_DATA}/pressure.grib"   "${WORKDIR}/pressure.grib"
 cp "${TEST_DATA}/surface.grib"    "${WORKDIR}/surface.grib"
 cp "${TEST_DATA}/wps/namelist.wps" "${WORKDIR}/namelist.wps"
+cp "${TEST_DATA}/wps/geo_em.d01.nc" "${WORKDIR}/geo_em.d01.nc"
 
 # ── Build manifest ───────────────────────────────────────────────────────────
 # The manifest uses /work/* paths (inside the container) because both the
