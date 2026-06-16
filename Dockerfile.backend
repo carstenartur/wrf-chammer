@@ -16,11 +16,8 @@ WORKDIR /app
 # Install runtime dependencies when the full backend is implemented.
 # RUN pip install --no-cache-dir -r requirements.txt
 
-# Placeholder health check target so the container can be started and probed.
-COPY ci/ ci/
-
 EXPOSE 8080
 
-CMD ["python3", "-c", "import http.server, os; \
-     http.server.HTTPServer(('', int(os.getenv('PORT', 8080))), \
+CMD ["python3", "-c", "import http.server; \
+     http.server.HTTPServer(('', 8080), \
      http.server.BaseHTTPRequestHandler).serve_forever()"]
