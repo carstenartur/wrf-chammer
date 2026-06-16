@@ -8,4 +8,25 @@ Information regarding WRF Model citations (including a DOI) can be found here: [
 
 The WRF Model is open-source code in the public domain, and its use is unrestricted. The name "WRF", however, is a registered trademark of the University Corporation for Atmospheric Research. The WRF public domain notice and related information may be found here: [https://www2.mmm.ucar.edu/wrf/users/public.html](https://www2.mmm.ucar.edu/wrf/users/public.html).
 
+---
+
+### WRF Workbench ###
+
+This repository also hosts the **WRF Workbench** — a managed-service layer that
+wraps WRF (including WPS preprocessing, simulation, and post-processing) behind
+a REST API, a job queue, and an event catalogue so that users can run
+simulations without knowledge of WRF internals.
+
+For the full system design see [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md).
+
+To start the complete local development stack (requires Docker Compose v2):
+
+```sh
+docker compose up --build
+```
+
+The REST API will be available at `http://localhost:8080/v1/` once the
+`backend` service is healthy.  The MinIO console (object storage) is available
+at `http://localhost:9001/`.
+
 

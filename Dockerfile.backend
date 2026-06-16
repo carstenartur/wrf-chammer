@@ -1,0 +1,26 @@
+# syntax=docker/dockerfile:1
+# Backend service for WRF Workbench.
+#
+# Responsibilities (see doc/ARCHITECTURE.md §3):
+#   - Accept and validate job submissions from the API Gateway.
+#   - Orchestrate job state transitions and dispatch work items to the job queue.
+#   - Expose the REST API described in doc/ARCHITECTURE.md §6.
+#
+# This image is a placeholder.  The full backend service implementation is
+# tracked in a separate issue.
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install runtime dependencies when the full backend is implemented.
+# RUN pip install --no-cache-dir -r requirements.txt
+
+# Placeholder health check target so the container can be started and probed.
+COPY ci/ ci/
+
+EXPOSE 8080
+
+CMD ["python3", "-c", "import http.server, os; \
+     http.server.HTTPServer(('', int(os.getenv('PORT', 8080))), \
+     http.server.BaseHTTPRequestHandler).serve_forever()"]

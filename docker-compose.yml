@@ -1,0 +1,155 @@
+# docker-compose.yml — WRF Workbench local development stack
+#
+# Starts the full WRF Workbench service graph on a single host.
+# Object storage is provided by MinIO (S3-compatible).
+# Message queuing and pub/sub are provided by Redis.
+# Metadata persistence is provided by PostgreSQL.
+#
+# See doc/ARCHITECTURE.md §9.3 for a description of the deployment model.
+#
+# Usage:
+#   docker compose up --build
+#
+# The REST API is available at http://localhost:8080/v1/ once the backend
+# service is healthy.
+
+services:
+
+  # --------------------------------------------------------------------------
+  # Infrastructure
+  # --------------------------------------------------------------------------
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: wrf
+      POSTGRES_USER: wrf
+      POSTGRES_PASSWORD: wrf
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wrf -d wrf"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --------------------------------------------------------------------------
+  # Application services
+  # --------------------------------------------------------------------------
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-wrf}:${POSTGRES_PASSWORD:-wrf}@db:5432/${POSTGRES_DB:-wrf}"
+      REDIS_URL: "redis://redis:6379"
+      S3_ENDPOINT: "http://minio:9000"
+      S3_ACCESS_KEY: "minioadmin"
+      S3_SECRET_KEY: "minioadmin"
+      S3_BUCKET: "wrf-workbench"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+
+  era5-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.era5
+    restart: unless-stopped
+    environment:
+      REDIS_URL: "redis://redis:6379"
+      S3_ENDPOINT: "http://minio:9000"
+      S3_ACCESS_KEY: "minioadmin"
+      S3_SECRET_KEY: "minioadmin"
+      S3_BUCKET: "wrf-workbench"
+      # Mount CDS API credentials at runtime:
+      #   -e CDS_URL=https://cds.climate.copernicus.eu/api
+      #   -e CDS_API_KEY=<your-key>
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  wps-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.wps
+    restart: unless-stopped
+    environment:
+      REDIS_URL: "redis://redis:6379"
+      S3_ENDPOINT: "http://minio:9000"
+      S3_ACCESS_KEY: "minioadmin"
+      S3_SECRET_KEY: "minioadmin"
+      S3_BUCKET: "wrf-workbench"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  wrf-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      REDIS_URL: "redis://redis:6379"
+      S3_ENDPOINT: "http://minio:9000"
+      S3_ACCESS_KEY: "minioadmin"
+      S3_SECRET_KEY: "minioadmin"
+      S3_BUCKET: "wrf-workbench"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  postproc-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.postproc
+    restart: unless-stopped
+    environment:
+      REDIS_URL: "redis://redis:6379"
+      S3_ENDPOINT: "http://minio:9000"
+      S3_ACCESS_KEY: "minioadmin"
+      S3_SECRET_KEY: "minioadmin"
+      S3_BUCKET: "wrf-workbench"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  pg-data:
+  minio-data:
