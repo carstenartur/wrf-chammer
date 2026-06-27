@@ -34,6 +34,10 @@ if [ ! -f "${DATA_DIR}/metadata.json" ]; then
     exit 1
 fi
 
+# Resolve DATA_DIR to an absolute path so symlinks created in the temp
+# serve directory point to the correct location regardless of cwd.
+DATA_DIR=$(CDPATH= cd -- "${DATA_DIR}" && pwd)
+
 SERVE_DIR=$(mktemp -d)
 trap 'rm -rf "${SERVE_DIR}"' EXIT
 

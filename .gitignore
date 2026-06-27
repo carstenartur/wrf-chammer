@@ -49,3 +49,7 @@ met_em.d*
 
 # Workbench run outputs
 workbench-runs/
+
+# Python cache
+__pycache__/
+*.py[cod]
