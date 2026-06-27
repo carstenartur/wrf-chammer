@@ -1,0 +1,119 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WRF Workbench Job Configuration",
+  "description": "Schema for a single WRF Workbench job/case configuration file.",
+  "type": "object",
+  "required": ["id", "mode", "name", "period", "domain", "inputs", "outputs"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique job identifier.  Used as the run-directory name.",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$",
+      "examples": ["xaver-dry-run", "kyrill-simulation-001"]
+    },
+    "mode": {
+      "type": "string",
+      "description": "Execution mode that controls which pipeline steps are run.",
+      "enum": ["dry-run", "wrf-smoke", "era5-offline", "era5-download-only"]
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable job name shown in status output.",
+      "minLength": 1,
+      "examples": ["Storm Xaver Demo", "WRF Smoke Test"]
+    },
+    "period": {
+      "type": "object",
+      "description": "Simulation time window (UTC).",
+      "required": ["start", "end"],
+      "additionalProperties": false,
+      "properties": {
+        "start": {
+          "type": "string",
+          "description": "Simulation start time in ISO 8601 UTC format.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+          "examples": ["2013-12-05T00:00:00Z"]
+        },
+        "end": {
+          "type": "string",
+          "description": "Simulation end time in ISO 8601 UTC format.  Must be after start.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+          "examples": ["2013-12-06T00:00:00Z"]
+        }
+      }
+    },
+    "domain": {
+      "type": "object",
+      "description": "WRF domain specification.",
+      "required": ["label", "center_lat", "center_lon", "dx_km", "dy_km", "e_we", "e_sn"],
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string",
+          "description": "Human-readable domain name.",
+          "minLength": 1
+        },
+        "center_lat": {
+          "type": "number",
+          "description": "Domain centre latitude in degrees north.",
+          "minimum": -90,
+          "maximum": 90
+        },
+        "center_lon": {
+          "type": "number",
+          "description": "Domain centre longitude in degrees east.",
+          "minimum": -180,
+          "maximum": 180
+        },
+        "dx_km": {
+          "type": "number",
+          "description": "Grid spacing in the west–east direction (km).",
+          "exclusiveMinimum": 0
+        },
+        "dy_km": {
+          "type": "number",
+          "description": "Grid spacing in the south–north direction (km).",
+          "exclusiveMinimum": 0
+        },
+        "e_we": {
+          "type": "integer",
+          "description": "Number of grid points in the west–east direction.",
+          "minimum": 3
+        },
+        "e_sn": {
+          "type": "integer",
+          "description": "Number of grid points in the south–north direction.",
+          "minimum": 3
+        }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "description": "Input data specification.",
+      "required": ["source"],
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "type": "string",
+          "description": "Input data source.  Use 'era5' for real-data runs, 'none' for idealized runs.",
+          "enum": ["era5", "none"]
+        }
+      }
+    },
+    "outputs": {
+      "type": "object",
+      "description": "Output location.",
+      "required": ["directory"],
+      "additionalProperties": false,
+      "properties": {
+        "directory": {
+          "type": "string",
+          "description": "Run directory path.  Relative paths are anchored at the repository root.",
+          "minLength": 1,
+          "examples": ["workbench-runs/xaver-dry-run"]
+        }
+      }
+    }
+  }
+}

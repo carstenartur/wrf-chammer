@@ -1,0 +1,24 @@
+{
+  "id": "xaver-dry-run",
+  "mode": "dry-run",
+  "name": "Storm Xaver Demo",
+  "period": {
+    "start": "2013-12-05T00:00:00Z",
+    "end": "2013-12-06T00:00:00Z"
+  },
+  "domain": {
+    "label": "northern-germany",
+    "center_lat": 54.0,
+    "center_lon": 9.0,
+    "dx_km": 9,
+    "dy_km": 9,
+    "e_we": 50,
+    "e_sn": 50
+  },
+  "inputs": {
+    "source": "era5"
+  },
+  "outputs": {
+    "directory": "workbench-runs/xaver-dry-run"
+  }
+}
