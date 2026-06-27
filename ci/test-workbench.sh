@@ -8,6 +8,8 @@
 #   4. Dry-run execution — run.sh creates the run directory and status files
 #   5. ERA5 offline mode — era5-offline mode succeeds through the Workbench
 #   6. Failure path      — run.sh exits non-zero for an invalid config
+#   7. Mode-script coverage — every accepted mode has a run script
+#   8. Cached era5-download-only via Workbench
 #
 # Requires: Python 3 (stdlib only)
 # Does NOT require: Docker, CDS credentials, NCAR infrastructure
@@ -36,7 +38,8 @@ for cfg in \
     "${WORKBENCH}/examples/xaver-dry-run.json" \
     "${WORKBENCH}/examples/kyrill-dry-run.json" \
     "${WORKBENCH}/examples/wrf-smoke.json" \
-    "${WORKBENCH}/examples/era5-offline.json"; do
+    "${WORKBENCH}/examples/era5-offline.json" \
+    "${WORKBENCH}/examples/era5-download-only.json"; do
     name=$(basename "${cfg}")
     if python3 "${WORKBENCH}/validate.py" "${cfg}" >/dev/null 2>&1; then
         pass "Validate ${name}"
@@ -265,6 +268,81 @@ if sh "${WORKBENCH}/run.sh" "${TMP}/invalid-for-run.json" >/dev/null 2>&1; then
     fail "run.sh should have failed with invalid config"
 else
     pass "run.sh exits non-zero with invalid config"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 7. Mode-script coverage — every accepted mode has a run script
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "-- Test 7: Mode-script coverage --"
+
+for mode in dry-run era5-offline era5-download-only wrf-smoke; do
+    script="${WORKBENCH}/scripts/run-${mode}.sh"
+    if [ -f "${script}" ]; then
+        pass "run-${mode}.sh exists"
+    else
+        fail "run-${mode}.sh missing (expected at ${script})"
+    fi
+done
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 8. Cached era5-download-only via Workbench
+# ─────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "-- Test 8: Cached era5-download-only via Workbench --"
+
+ERA5_DL_DIR="${TMP}/era5-dl-outputs"
+ERA5_CACHED_DIR="${ERA5_DL_DIR}/outputs/era5"
+mkdir -p "${ERA5_CACHED_DIR}"
+
+# Pre-seed the target file so download-era5.py uses the cached path
+cp "${REPO_ROOT}/ci/era5/dummy-era5.grib" "${ERA5_CACHED_DIR}/dummy-era5.grib"
+
+cat > "${TMP}/era5-dl-test.json" <<JSON
+{
+  "id": "wb-ci-era5-dl",
+  "mode": "era5-download-only",
+  "name": "CI ERA5 Download Only (cached)",
+  "period": {"start": "2013-12-05T00:00:00Z", "end": "2013-12-06T00:00:00Z"},
+  "domain": {
+    "label": "northern-germany",
+    "center_lat": 54.0, "center_lon": 9.0,
+    "dx_km": 9, "dy_km": 9, "e_we": 50, "e_sn": 50
+  },
+  "inputs": {
+    "source": "era5",
+    "era5": {"config": "ci/era5/era5-offline-test-config.json"}
+  },
+  "outputs": {"directory": "${ERA5_DL_DIR}"}
+}
+JSON
+
+if sh "${WORKBENCH}/run.sh" "${TMP}/era5-dl-test.json" >/dev/null 2>&1; then
+    DL_STATUS=$(python3 -c "import json; print(json.load(open('${ERA5_DL_DIR}/status.json'))['status'])")
+    if [ "${DL_STATUS}" = "succeeded" ]; then
+        pass "Cached era5-download-only status = succeeded"
+    else
+        fail "Cached era5-download-only status expected 'succeeded', got '${DL_STATUS}'"
+    fi
+
+    if [ -f "${ERA5_DL_DIR}/outputs/era5-manifest.json" ]; then
+        pass "era5-manifest.json exists"
+    else
+        fail "era5-manifest.json missing"
+    fi
+
+    # Verify manifest marks the target
+    python3 - "${ERA5_DL_DIR}/outputs/era5-manifest.json" <<'PY' && pass "Manifest references dummy-era5.grib target" || fail "Manifest does not reference expected target"
+import json, sys
+from pathlib import Path
+manifest = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+outputs = manifest.get("outputs", [])
+targets = [e.get("target", "") for e in outputs]
+if not any("dummy-era5.grib" in t for t in targets):
+    raise SystemExit(f"dummy-era5.grib not found in manifest targets: {targets}")
+PY
+else
+    fail "Cached era5-download-only Workbench run failed (expected success)"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────

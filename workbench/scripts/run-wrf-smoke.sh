@@ -40,7 +40,7 @@ docker run --rm \
     wrf-reproducible:latest \
     sh -c '
         set -eu
-        sh /opt/wrf/ci/smoke-test-wrf.sh
+        smoke-test-wrf.sh
         cp /tmp/wrf-smoke-test/wrfout_d01_* /workbench-outputs/ 2>/dev/null || true
         cp /tmp/wrf-smoke-test/*.log /workbench-logs/ 2>/dev/null || true
     '

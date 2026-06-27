@@ -98,6 +98,19 @@
           "type": "string",
           "description": "Input data source.  Use 'era5' for real-data runs, 'none' for idealized runs.",
           "enum": ["era5", "none"]
+        },
+        "era5": {
+          "type": "object",
+          "description": "ERA5-specific input options.",
+          "additionalProperties": false,
+          "properties": {
+            "config": {
+              "type": "string",
+              "description": "Path to the ERA5 download request config JSON file.  Required for era5-download-only mode.",
+              "minLength": 1,
+              "examples": ["ci/era5/era5-example-config.json"]
+            }
+          }
         }
       }
     },

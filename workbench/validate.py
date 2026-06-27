@@ -8,6 +8,7 @@ Exits with status 0 on success, non-zero on failure.
 """
 
 import json
+import os
 import re
 import sys
 
@@ -18,8 +19,12 @@ _ISO8601_RE = re.compile(r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$')
 _ID_RE = re.compile(r'^[a-z0-9]([a-z0-9-]*[a-z0-9])?$')
 
 
-def validate_config(config):
-    """Return a list of error strings; empty list means the config is valid."""
+def validate_config(config, config_path=None):
+    """Return a list of error strings; empty list means the config is valid.
+
+    config_path — absolute path to the config file being validated; used to
+                  resolve relative paths referenced inside the config.
+    """
     errors = []
 
     if not isinstance(config, dict):
@@ -123,6 +128,51 @@ def validate_config(config):
                 f"got: {inputs['source']!r}"
             )
 
+        # era5-download-only requires inputs.era5.config pointing to a valid file
+        if config.get("mode") == "era5-download-only":
+            era5 = inputs.get("era5")
+            if not isinstance(era5, dict) or not era5.get("config", "").strip():
+                errors.append(
+                    "'inputs.era5.config' is required for mode 'era5-download-only'"
+                )
+            else:
+                era5_config_path = era5["config"].strip()
+                import os
+                if not os.path.isabs(era5_config_path):
+                    # Relative paths are resolved first from cwd (repo root, as
+                    # used by run.sh), then falling back to the config file's
+                    # own directory for portability.
+                    cwd_resolved = os.path.join(os.getcwd(), era5_config_path)
+                    if os.path.isfile(cwd_resolved):
+                        era5_config_path = cwd_resolved
+                    elif config_path:
+                        era5_config_path = os.path.join(
+                            os.path.dirname(os.path.abspath(config_path)),
+                            era5_config_path,
+                        )
+                    else:
+                        era5_config_path = cwd_resolved
+                if not os.path.isfile(era5_config_path):
+                    errors.append(
+                        f"'inputs.era5.config' path does not exist: {era5['config']!r}"
+                    )
+                else:
+                    try:
+                        import json as _json
+                        with open(era5_config_path, encoding="utf-8") as _f:
+                            _era5_cfg = _json.load(_f)
+                        _requests = _era5_cfg.get("requests")
+                        if not isinstance(_requests, dict) or not _requests:
+                            errors.append(
+                                f"'inputs.era5.config' file must contain a non-empty "
+                                f"'requests' object: {era5['config']!r}"
+                            )
+                    except (OSError, ValueError) as _exc:
+                        errors.append(
+                            f"Cannot read 'inputs.era5.config' file "
+                            f"{era5['config']!r}: {_exc}"
+                        )
+
     # outputs
     outputs = config["outputs"]
     if not isinstance(outputs, dict):
@@ -158,7 +208,7 @@ def main():
         sys.exit(1)
 
     config = load_config(sys.argv[1])
-    errors = validate_config(config)
+    errors = validate_config(config, config_path=os.path.abspath(sys.argv[1]))
 
     if errors:
         print(

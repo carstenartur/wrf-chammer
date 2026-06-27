@@ -1,0 +1,27 @@
+{
+  "id": "era5-download-only-demo",
+  "mode": "era5-download-only",
+  "name": "ERA5 Download Only Demo",
+  "period": {
+    "start": "2013-12-05T00:00:00Z",
+    "end": "2013-12-06T00:00:00Z"
+  },
+  "domain": {
+    "label": "northern-germany",
+    "center_lat": 54.0,
+    "center_lon": 9.0,
+    "dx_km": 9,
+    "dy_km": 9,
+    "e_we": 50,
+    "e_sn": 50
+  },
+  "inputs": {
+    "source": "era5",
+    "era5": {
+      "config": "ci/era5/era5-offline-test-config.json"
+    }
+  },
+  "outputs": {
+    "directory": "workbench-runs/era5-download-only-demo"
+  }
+}
