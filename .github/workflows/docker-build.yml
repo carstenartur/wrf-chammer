@@ -28,3 +28,6 @@ jobs:
 
       - name: Run WRF smoke-test simulation
         run: docker run --rm wrf-reproducible /usr/local/bin/smoke-test-wrf.sh
+
+      - name: Run WRF smoke test via Workbench
+        run: sh workbench/run.sh workbench/examples/wrf-smoke.json

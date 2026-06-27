@@ -46,3 +46,6 @@ met_em.d*
 # ERA5/WPS pipeline work directories
 .era5-cache/
 .wps-work/
+
+# Workbench run outputs
+workbench-runs/

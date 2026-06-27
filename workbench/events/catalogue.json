@@ -1,0 +1,68 @@
+{
+  "events": {
+    "xaver": {
+      "name": "Storm Xaver",
+      "description": "Extratropical cyclone that struck northwestern Europe on 5–6 December 2013, bringing record-breaking wind gusts, coastal flooding, and widespread infrastructure damage across the British Isles, Denmark, and northern Germany.",
+      "start": "2013-12-05T00:00:00Z",
+      "end": "2013-12-06T12:00:00Z",
+      "default_domain": "northern-germany",
+      "domain": {
+        "label": "northern-germany",
+        "center_lat": 54.0,
+        "center_lon": 9.0,
+        "dx_km": 9,
+        "dy_km": 9,
+        "e_we": 50,
+        "e_sn": 50
+      },
+      "suggested_outputs": [
+        "wind10m",
+        "pressure",
+        "accumulated_precipitation"
+      ]
+    },
+    "kyrill": {
+      "name": "Storm Kyrill",
+      "description": "Powerful extratropical cyclone that swept across Europe on 18–19 January 2007, causing hurricane-force winds, widespread forest damage, and fatalities from the British Isles to Poland and the Czech Republic.",
+      "start": "2007-01-18T00:00:00Z",
+      "end": "2007-01-19T12:00:00Z",
+      "default_domain": "central-europe",
+      "domain": {
+        "label": "central-europe",
+        "center_lat": 51.0,
+        "center_lon": 10.0,
+        "dx_km": 9,
+        "dy_km": 9,
+        "e_we": 60,
+        "e_sn": 60
+      },
+      "suggested_outputs": [
+        "wind10m",
+        "pressure",
+        "accumulated_precipitation",
+        "temperature_2m"
+      ]
+    },
+    "custom-template": {
+      "name": "Custom Simulation",
+      "description": "Template for a user-defined simulation case. Copy this entry, replace the period dates and domain parameters, and supply an id and name that describe your event.",
+      "start": "YYYY-MM-DDTHH:MM:SSZ",
+      "end": "YYYY-MM-DDTHH:MM:SSZ",
+      "default_domain": "user-defined",
+      "domain": {
+        "label": "user-defined",
+        "center_lat": 50.0,
+        "center_lon": 10.0,
+        "dx_km": 9,
+        "dy_km": 9,
+        "e_we": 50,
+        "e_sn": 50
+      },
+      "suggested_outputs": [
+        "wind10m",
+        "pressure",
+        "temperature_2m"
+      ]
+    }
+  }
+}
