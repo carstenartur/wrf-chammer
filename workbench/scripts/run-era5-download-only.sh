@@ -103,7 +103,11 @@ empty    = []
 
 for entry in outputs:
     target = entry.get("target", "")
-    p = output_dir / target if target and not Path(target).is_absolute() else Path(target)
+    t_path = Path(target)
+    if target and not t_path.is_absolute():
+        p = output_dir / target
+    else:
+        p = t_path
     if not p.exists():
         missing.append(str(p))
     elif p.stat().st_size == 0:

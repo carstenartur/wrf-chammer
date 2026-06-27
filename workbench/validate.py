@@ -137,7 +137,6 @@ def validate_config(config, config_path=None):
                 )
             else:
                 era5_config_path = era5["config"].strip()
-                import os
                 if not os.path.isabs(era5_config_path):
                     # Relative paths are resolved first from cwd (repo root, as
                     # used by run.sh), then falling back to the config file's
@@ -158,9 +157,8 @@ def validate_config(config, config_path=None):
                     )
                 else:
                     try:
-                        import json as _json
                         with open(era5_config_path, encoding="utf-8") as _f:
-                            _era5_cfg = _json.load(_f)
+                            _era5_cfg = json.load(_f)
                         _requests = _era5_cfg.get("requests")
                         if not isinstance(_requests, dict) or not _requests:
                             errors.append(
