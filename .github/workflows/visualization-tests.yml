@@ -1,0 +1,26 @@
+name: Visualization MVP Tests
+
+on:
+  push:
+    branches: [master, develop]
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  visualization-tests:
+    name: Visualization MVP test suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Run visualization tests
+        run: sh visualization/tests/test_visualization.sh
