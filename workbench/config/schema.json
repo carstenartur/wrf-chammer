@@ -56,13 +56,13 @@
         },
         "center_lat": {
           "type": "number",
-          "description": "Domain centre latitude in degrees north.",
+          "description": "Domain center latitude in degrees north.",
           "minimum": -90,
           "maximum": 90
         },
         "center_lon": {
           "type": "number",
-          "description": "Domain centre longitude in degrees east.",
+          "description": "Domain center longitude in degrees east.",
           "minimum": -180,
           "maximum": 180
         },

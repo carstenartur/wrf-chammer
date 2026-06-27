@@ -98,8 +98,8 @@ Each job is described by a JSON file.  The full schema is in
 | `period.start` | string | ✓ | Simulation start (ISO 8601 UTC, e.g. `2013-12-05T00:00:00Z`) |
 | `period.end` | string | ✓ | Simulation end (ISO 8601 UTC, must be after `start`) |
 | `domain.label` | string | ✓ | Human-readable domain name |
-| `domain.center_lat` | number | ✓ | Domain centre latitude in degrees north (−90 to 90) |
-| `domain.center_lon` | number | ✓ | Domain centre longitude in degrees east (−180 to 180) |
+| `domain.center_lat` | number | ✓ | Domain center latitude in degrees north (−90 to 90) |
+| `domain.center_lon` | number | ✓ | Domain center longitude in degrees east (−180 to 180) |
 | `domain.dx_km` | number | ✓ | Grid spacing west–east (km, > 0) |
 | `domain.dy_km` | number | ✓ | Grid spacing south–north (km, > 0) |
 | `domain.e_we` | integer | ✓ | Grid points west–east (≥ 3) |
