@@ -1,0 +1,83 @@
+name: HPC Regression Tests
+
+# Upstream NCAR HPC compilation and regression tests.
+#
+# These tests require self-hosted runners and NCAR infrastructure (e.g. the
+# `derecho` runner, GLADE archive, NCAR accounts) that are not available to
+# external contributors.
+#
+# Triggers:
+#   - workflow_dispatch: run on demand from the Actions tab.
+#   - pull_request labeled: run when the `compile-tests` or `all-tests`
+#     label is applied to a PR by a maintainer with access to HPC runners.
+#
+# Normal pushes and pull_request open/sync/reopen events never trigger this
+# workflow, so external contributors are not blocked by missing HPC infra.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [ labeled ]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  buildtests:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       (github.event.label.name == 'compile-tests' ||
+        github.event.label.name == 'all-tests'))
+    strategy:
+      max-parallel: 4
+      fail-fast: false
+      matrix:
+        testSet:
+          - host: derecho
+            hpc-workflows_path: .ci/hpc-workflows
+            archive: /glade/work/aislas/github/runners/wrf/derecho/logs/
+            account: NMMM0012
+            name: "Make Compilation Tests"
+            id: make-tests
+            fileroot: wrf_compilation_tests-make
+            args: -j='{"node_select":{"-l ":{"select":1}}}'
+            pool: 8
+            tpool: 1
+            mkdirs: true
+            tests:
+              - make-gnu-serial
+              - make-gnu-sm
+              - make-gnu-dm
+              - make-gnu-dm+sm
+              - make-intel-classic-serial
+              - make-intel-classic-sm
+              - make-intel-classic-dm
+              - make-intel-classic-dm+sm
+              - make-intel-llvm-serial
+              - make-intel-llvm-sm
+              - make-intel-llvm-dm
+              - make-intel-llvm-dm+sm
+              - make-pgi-serial
+              - make-pgi-sm
+              - make-pgi-dm
+              - make-pgi-dm+sm
+              # add new compilation tests here
+
+    uses: ./.github/workflows/test_workflow.yml
+    with:
+      label: compile-tests
+      hpc-workflows_path: ${{ matrix.testSet.hpc-workflows_path }}
+      archive: ${{ matrix.testSet.archive }}
+      name: ${{ matrix.testSet.name }}
+      id: ${{ matrix.testSet.id }}
+      host: ${{ matrix.testSet.host }}
+      fileroot: ${{ matrix.testSet.fileroot }}
+      account: ${{ matrix.testSet.account }}
+      tests: ${{ toJson(matrix.testSet.tests) }}
+      mkdirs: ${{ matrix.testSet.mkdirs }}
+      args: ${{ matrix.testSet.args }}
+      pool: ${{ matrix.testSet.pool }}
+      tpool: ${{ matrix.testSet.tpool }}
+    name: Test ${{ matrix.testSet.name }} on ${{ matrix.testSet.host }}

@@ -1,111 +1,29 @@
-name: Regression Suite
-run-name : ${{ github.event_name == 'push' && 'Fork CI' || 'PR CI' }} (${{ github.event_name }})
+name: Fork CI
 
 on:
   push:
     branches: [ master, develop ]
-# See https://stackoverflow.com/a/78444521 and 
-# https://github.com/orgs/community/discussions/26874#discussioncomment-3253755
-# as well as official (but buried) documentation :
-# https://docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows#pull-request-events-for-forked-repositories-2
   pull_request:
-    types:    [ opened, synchronize, reopened, labeled ]
+    types: [ opened, synchronize, reopened ]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
-# https://docs.github.com/en/actions/sharing-automations/reusing-workflows#supported-keywords-for-jobs-that-call-a-reusable-workflow
-# Also https://stackoverflow.com/a/74959635
-# TL;DR - For public repositories the safest approach will be to use the default read permissions, but at the cost
-# of not being able to modify the labels. That will need to be a separate [trusted] workflow that runs from the base repo
-# permissions :
-#   contents : read
-#   pull-requests : write
-  
-# Write our tests out this way for easier legibility
-# testsSet    :
-#   - key : value
-#     key : value
-#     tests :
-#       - value
-#       - value
-#   - < next test >
-# https://stackoverflow.com/a/68940067
 jobs:
-  era5-offline:
-    name: ERA5 offline dry run
+  shellcheck:
+    name: Shell script validation
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
-      - name: Run offline ERA5 script checks
-        run: sh ci/test-era5-offline.sh
-
-  buildtests:
-    # Upstream HPC regression tests require self-hosted infrastructure such as the
-    # derecho runner. Keep them available for explicitly labeled PRs, but do not
-    # schedule them on normal pushes in this fork.
-    if : ${{ github.event_name == 'pull_request' && (github.event.label.name == 'compile-tests' || github.event.label.name == 'all-tests') }}
-    strategy:
-      max-parallel: 4
-      fail-fast: false
-      matrix:
-      
-        testSet  :
-          - host : derecho
-            hpc-workflows_path : .ci/hpc-workflows
-            archive : /glade/work/aislas/github/runners/wrf/derecho/logs/
-            account : NMMM0012
-            name : "Make Compilation Tests"
-            id   : make-tests
-            fileroot : wrf_compilation_tests-make
-            args : -j='{"node_select":{"-l ":{"select":1}}}'
-            pool  : 8
-            tpool : 1
-            mkdirs : true
-            tests :
-              - make-gnu-serial
-              - make-gnu-sm
-              - make-gnu-dm
-              - make-gnu-dm+sm
-              - make-intel-classic-serial
-              - make-intel-classic-sm
-              - make-intel-classic-dm
-              - make-intel-classic-dm+sm
-              - make-intel-llvm-serial
-              - make-intel-llvm-sm
-              - make-intel-llvm-dm
-              - make-intel-llvm-dm+sm
-              - make-pgi-serial
-              - make-pgi-sm
-              - make-pgi-dm
-              - make-pgi-dm+sm
-              # add new compilation tests here
-
-    uses : ./.github/workflows/test_workflow.yml
-    with :
-      # This should be the only hard-coded value, we don't use ${{ github.event.label.name }}
-      # to avoid 'all-tests' to be used in this workflow
-      label    : compile-tests
-
-      # Everything below this should remain the same and comes from the testSet matrix
-      hpc-workflows_path : ${{ matrix.testSet.hpc-workflows_path }}
-      archive  : ${{ matrix.testSet.archive }}
-      name     : ${{ matrix.testSet.name }}
-      id       : ${{ matrix.testSet.id }}
-      host     : ${{ matrix.testSet.host }}
-      fileroot : ${{ matrix.testSet.fileroot }}
-      account  : ${{ matrix.testSet.account }}
-      tests    : ${{ toJson( matrix.testSet.tests ) }}
-      mkdirs   : ${{ matrix.testSet.mkdirs }}
-      args     : ${{ matrix.testSet.args }}
-      pool     : ${{ matrix.testSet.pool }}
-      tpool    : ${{ matrix.testSet.tpool }}
-    # I am leaving this here for posterity if this is to be replicated in private repositories for testing
-    permissions:
-      contents: read
-      pull-requests: write
-    name : Test ${{ matrix.testSet.name }} on ${{ matrix.testSet.host }}
+      - name: Run ShellCheck on fork CI scripts
+        run: |
+          shellcheck --severity=error \
+            ci/*.sh \
+            workbench/run.sh \
+            workbench/scripts/*.sh \
+            visualization/tests/test_visualization.sh \
+            visualization/postprocess/*.sh

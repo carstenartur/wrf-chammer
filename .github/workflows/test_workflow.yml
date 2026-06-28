@@ -1,7 +1,7 @@
+name: HPC Regression Suite
 
-
-on :
-  workflow_call :
+on:
+  workflow_call:
     inputs :
       label : 
         required : true
