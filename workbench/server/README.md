@@ -13,7 +13,7 @@ This is a local development server.
 
 - Default bind address: `127.0.0.1`
 - Only loopback clients are accepted
-- No wildcard CORS; only loopback HTTP origins are reflected
+- No dynamic CORS origin reflection; serve the web UI from the same origin or use a local proxy
 - No authentication yet
 - Executes local Workbench scripts
 - Not intended for public internet exposure
@@ -175,7 +175,9 @@ Cancellation intentionally returns HTTP 501 for now:
 ## Relationship to the Web UI
 
 The browser UI should call this API rather than reading and interpreting all
-Workbench internals directly.
+Workbench internals directly.  For browser use, serve the UI from the same local
+origin as the API or place both behind a local development proxy; the API no
+longer reflects arbitrary `Origin` headers.
 
 Recommended flow:
 
