@@ -45,6 +45,27 @@ GET /api/events/xaver
 The event endpoints are backed by `workbench.core.catalogue`; they do not parse
 the catalogue independently.
 
+### Preview a job config from an event
+
+```http
+POST /api/jobs/preview
+Content-Type: application/json
+
+{
+  "event": "Xaver",
+  "domain": "northern-germany-9km",
+  "resolution": "balanced-local",
+  "mode": "dry-run",
+  "job_id": "xaver-preview",
+  "output_directory": "workbench-runs/xaver-preview"
+}
+```
+
+This endpoint calls `workbench.core.catalogue.build_job_config(...)` and returns
+a Workbench job config plus validation result.  It is the preferred bridge for
+the future web UI because the UI does not need to duplicate catalogue or WRF job
+configuration rules.
+
 ### Validate a job config
 
 ```http
@@ -148,8 +169,8 @@ Recommended flow:
 
 1. UI searches events through `GET /api/events?q=...`.
 2. UI shows event details and presets from `GET /api/events/{id}`.
-3. UI asks the API or local core to generate/preview a config.
-4. UI sends the generated config to `POST /api/jobs/validate`.
+3. UI asks the API to generate/preview a config through `POST /api/jobs/preview`.
+4. UI sends the generated config to `POST /api/jobs/validate` if the user edits it.
 5. UI starts a dry-run or real pipeline with `POST /api/jobs`.
 6. UI polls `GET /api/jobs/{id}` and fetches logs/output metadata.
 
@@ -159,7 +180,7 @@ Recommended flow:
 sh ci/test-workbench-server.sh
 ```
 
-The test starts the server on a random local port, exercises events,
+The test starts the server on a random local port, exercises events, preview,
 validation, dry-run execution, status, logs, outputs, visualization metadata and
 the cancellation placeholder.  It requires no Docker, CDS credentials or HPC
 infrastructure.
