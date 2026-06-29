@@ -108,24 +108,25 @@ assert len(xaver["domain_presets"]) >= 2
 assert len(xaver["resolution_presets"]) >= 1
 
 run_dir = tmp / "api-dry-run"
-config = {
-    "id": "api-ci-dry-run",
-    "mode": "dry-run",
-    "name": "API CI Dry Run",
-    "period": {"start": "2013-12-05T00:00:00Z", "end": "2013-12-05T06:00:00Z"},
-    "domain": {
-        "label": "northern-germany-9km",
-        "center_lat": 54.0,
-        "center_lon": 9.0,
-        "dx_km": 9,
-        "dy_km": 9,
-        "e_we": 20,
-        "e_sn": 20,
+preview = request(
+    "POST",
+    "/api/jobs/preview",
+    {
+        "event": "Xaver",
+        "domain": "northern-germany-27km",
+        "resolution": "quick-preview",
+        "mode": "dry-run",
+        "job_id": "api-ci-dry-run",
+        "output_directory": str(run_dir),
     },
-    "inputs": {"source": "era5"},
-    "outputs": {"directory": str(run_dir)},
-}
+)
+assert preview["ok"] is True
+assert preview["valid"] is True
+assert preview["config"]["id"] == "api-ci-dry-run"
+assert preview["config"]["metadata"]["event_id"] == "xaver"
+assert preview["config"]["metadata"]["domain_preset"] == "northern-germany-27km"
 
+config = preview["config"]
 valid = request("POST", "/api/jobs/validate", {"config": config})
 assert valid == {"ok": True, "valid": True, "errors": []}
 
