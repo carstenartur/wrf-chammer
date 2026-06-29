@@ -75,29 +75,30 @@ class WorkbenchApiHandler(BaseHTTPRequestHandler):
 
     server: WorkbenchApiServer
 
-    # ── HTTP plumbing ────────────────────────────────────────────────────────
-
     def _is_loopback_client(self) -> bool:
         try:
             return ipaddress.ip_address(self.client_address[0]).is_loopback
         except ValueError:
             return False
 
-    def _allowed_origin(self) -> str | None:
+    def _is_loopback_origin(self) -> bool:
         origin = self.headers.get("Origin")
         if not origin:
-            return None
+            return True
         parsed = urlparse(origin)
-        if parsed.scheme != "http":
-            return None
-        if parsed.hostname in {"localhost", "127.0.0.1", "::1"}:
-            return origin
-        return None
+        if parsed.scheme != "http" or parsed.hostname is None:
+            return False
+        if parsed.hostname == "localhost":
+            return True
+        try:
+            return ipaddress.ip_address(parsed.hostname).is_loopback
+        except ValueError:
+            return False
 
     def _require_local_client(self) -> None:
         if not self._is_loopback_client():
             raise ApiError(HTTPStatus.FORBIDDEN, "forbidden", "Workbench API only accepts loopback clients")
-        if self.headers.get("Origin") and self._allowed_origin() is None:
+        if not self._is_loopback_origin():
             raise ApiError(HTTPStatus.FORBIDDEN, "forbidden_origin", "Origin is not allowed for the local Workbench API")
 
     def _send_json(self, status: int, payload: dict[str, Any]) -> None:
@@ -105,10 +106,6 @@ class WorkbenchApiHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        allowed_origin = self._allowed_origin()
-        if allowed_origin:
-            self.send_header("Access-Control-Allow-Origin", allowed_origin)
-            self.send_header("Vary", "Origin")
         self.end_headers()
         self.wfile.write(body)
 
@@ -139,10 +136,6 @@ class WorkbenchApiHandler(BaseHTTPRequestHandler):
         try:
             self._require_local_client()
             self.send_response(HTTPStatus.NO_CONTENT)
-            allowed_origin = self._allowed_origin()
-            if allowed_origin:
-                self.send_header("Access-Control-Allow-Origin", allowed_origin)
-                self.send_header("Vary", "Origin")
             self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
             self.send_header("Access-Control-Allow-Headers", "Content-Type")
             self.end_headers()
@@ -203,8 +196,6 @@ class WorkbenchApiHandler(BaseHTTPRequestHandler):
     def log_message(self, fmt: str, *args: Any) -> None:
         sys.stderr.write("[%s] %s\n" % (self.log_date_time_string(), fmt % args))
 
-    # ── Events ────────────────────────────────────────────────────────────────
-
     def _catalogue(self) -> dict[str, Any]:
         try:
             return load_catalogue(self.server.repo_root)
@@ -238,8 +229,6 @@ class WorkbenchApiHandler(BaseHTTPRequestHandler):
             raise ApiError(HTTPStatus.NOT_FOUND, "event_not_found", str(exc)) from exc
         self._send_json(HTTPStatus.OK, {"ok": True, **self._event_detail(event, catalogue)})
 
-    # ── Job validation, preview and execution ────────────────────────────────
-
     def _extract_config(self, payload: dict[str, Any]) -> dict[str, Any]:
         config = payload.get("config", payload)
         if not isinstance(config, dict):
@@ -247,8 +236,6 @@ class WorkbenchApiHandler(BaseHTTPRequestHandler):
         return config
 
     def _validate_config(self, config: dict[str, Any]) -> list[str]:
-        # workbench.validate resolves relative ERA5 paths from cwd, so the server
-        # process is started with cwd=repo_root and main() also chdirs there.
         return validate_config(config)
 
     def _handle_preview_job(self) -> None:
@@ -260,11 +247,7 @@ class WorkbenchApiHandler(BaseHTTPRequestHandler):
             config = build_job_config(
                 event_ref,
                 domain_id=payload.get("domain") or payload.get("domain_id"),
-                resolution_preset_id=(
-                    payload.get("resolution")
-                    or payload.get("resolution_preset")
-                    or payload.get("resolution_preset_id")
-                ),
+                resolution_preset_id=(payload.get("resolution") or payload.get("resolution_preset") or payload.get("resolution_preset_id")),
                 mode=payload.get("mode", "dry-run"),
                 job_id=payload.get("job_id"),
                 output_directory=payload.get("output_directory"),
@@ -332,9 +315,6 @@ class WorkbenchApiHandler(BaseHTTPRequestHandler):
     def _server_managed_config(self, submitted_config: dict[str, Any], run_token: str) -> dict[str, Any]:
         config = copy.deepcopy(submitted_config)
         config.setdefault("outputs", {})
-        # Never use a user-supplied filesystem path for API execution.  The API
-        # owns execution directories and writes a server-generated relative path
-        # into the config consumed by workbench/run.sh.
         config["outputs"]["directory"] = f"workbench-runs/api-runs/{run_token}"
         metadata = config.setdefault("metadata", {})
         if isinstance(metadata, dict):
@@ -352,19 +332,11 @@ class WorkbenchApiHandler(BaseHTTPRequestHandler):
     def _run_workbench(self, config_path: Path, run_dir: Path) -> dict[str, Any]:
         start_time = time.time()
         command = ["sh", str(self.server.repo_root / "workbench" / "run.sh"), str(config_path)]
-        completed = subprocess.run(
-            command,
-            cwd=str(self.server.repo_root),
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-        )
+        completed = subprocess.run(command, cwd=str(self.server.repo_root), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
         logs_dir = run_dir / "logs"
         logs_dir.mkdir(parents=True, exist_ok=True)
         (logs_dir / "api-run.log").write_text(
-            "COMMAND: sh workbench/run.sh <server-managed-config>\n\n"
-            + "STDOUT:\n" + completed.stdout + "\nSTDERR:\n" + completed.stderr,
+            "COMMAND: sh workbench/run.sh <server-managed-config>\n\n" + "STDOUT:\n" + completed.stdout + "\nSTDERR:\n" + completed.stderr,
             encoding="utf-8",
         )
         return {
@@ -373,8 +345,6 @@ class WorkbenchApiHandler(BaseHTTPRequestHandler):
             "duration_seconds": round(time.time() - start_time, 3),
             "status": "succeeded" if completed.returncode == 0 else "failed",
         }
-
-    # ── Job lookup, logs and outputs ─────────────────────────────────────────
 
     def _read_index(self) -> dict[str, Any]:
         try:
@@ -418,6 +388,7 @@ class WorkbenchApiHandler(BaseHTTPRequestHandler):
         logs_dir = run_dir / "logs"
         outputs_dir = run_dir / "outputs"
         visualization_dir = run_dir / "visualizations"
+        metadata_file = visualization_dir / "metadata.json"
         return {
             "job_id": job_id,
             "run_token": run_token,
@@ -427,9 +398,9 @@ class WorkbenchApiHandler(BaseHTTPRequestHandler):
             "logs": self._list_files(logs_dir),
             "outputs": self._list_files(outputs_dir),
             "visualization": {
-                "available": self._safe_file_exists(visualization_dir / "metadata.json", visualization_dir),
+                "available": self._safe_file_exists(metadata_file, visualization_dir),
                 "path": str(visualization_dir),
-                "metadata": "metadata.json" if self._safe_file_exists(visualization_dir / "metadata.json", visualization_dir) else None,
+                "metadata": "metadata.json" if self._safe_file_exists(metadata_file, visualization_dir) else None,
             },
         }
 
@@ -465,11 +436,7 @@ class WorkbenchApiHandler(BaseHTTPRequestHandler):
                 resolved = path.resolve()
                 if os.path.commonpath([str(base_resolved), str(resolved)]) != str(base_resolved):
                     continue
-                files.append({
-                    "name": path.name,
-                    "relative_path": str(path.relative_to(directory)),
-                    "size_bytes": path.stat().st_size,
-                })
+                files.append({"name": path.name, "relative_path": str(path.relative_to(directory)), "size_bytes": path.stat().st_size})
             except OSError:
                 continue
         return files
@@ -517,18 +484,8 @@ class WorkbenchApiHandler(BaseHTTPRequestHandler):
         job_id = parts[2] if len(parts) >= 3 else "unknown"
         self._send_json(
             HTTPStatus.NOT_IMPLEMENTED,
-            {
-                "ok": False,
-                "job_id": job_id,
-                "error": {
-                    "code": "cancel_not_implemented",
-                    "message": "Job cancellation is not implemented yet for the local synchronous runner.",
-                },
-            },
+            {"ok": False, "job_id": job_id, "error": {"code": "cancel_not_implemented", "message": "Job cancellation is not implemented yet for the local synchronous runner."}},
         )
-
-
-# ── Command line ─────────────────────────────────────────────────────────────
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
