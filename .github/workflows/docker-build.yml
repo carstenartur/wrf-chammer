@@ -27,7 +27,15 @@ jobs:
         run: docker run --rm wrf-reproducible /usr/local/bin/verify-wrf-runtime.sh
 
       - name: Run WRF smoke-test simulation
-        run: docker run --rm wrf-reproducible /usr/local/bin/smoke-test-wrf.sh
+        run: docker run --rm wrf-reproducible /usr/local/bin/smoke-test-wrf.sh 2>&1 | tee /tmp/smoke-test-wrf.log
 
       - name: Run WRF smoke test via Workbench
-        run: sh workbench/run.sh workbench/examples/wrf-smoke.json
+        run: sh workbench/run.sh workbench/examples/wrf-smoke.json 2>&1 | tee /tmp/smoke-test-workbench.log
+
+      - name: Upload smoke test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-logs
+          path: /tmp/smoke-test-*.log
+          if-no-files-found: ignore
