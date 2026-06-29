@@ -9,12 +9,31 @@ The catalogue is intentionally local JSON for now.  It can later be backed by a
 larger event database, but the first web UI should be able to load these files
 without network access.
 
+## Architectural rule
+
+Catalogue semantics live in `workbench/core/catalogue.py`.
+
+The JSON files are data.  The core module is the single place for:
+
+- loading catalogue and preset files
+- validating cross references
+- building the search index
+- resolving event ids, names and aliases
+- converting an event plus presets into a Workbench job config
+
+Shell scripts, CI, the future local API and the browser UI should call this core
+module instead of copying catalogue rules into their own code.  This keeps the
+cognitive load low for contributors: UI work can focus on UI, runner work can
+focus on execution, and catalogue work can stay in this directory.
+
 ## Files
 
 ```text
+workbench/core/catalogue.py          # Shared catalogue logic and CLI
 workbench/events/catalogue.json      # Named weather events
 workbench/presets/domains.json       # Reusable WRF domain presets
 workbench/presets/resolutions.json   # Runtime/resolution classes
+ci/test-event-catalogue.sh           # Thin CI wrapper around the core module
 ```
 
 ## Event catalogue schema
@@ -120,18 +139,58 @@ and a more expensive run.
 The values are deliberately approximate.  They are meant to prevent unrealistic
 first choices, not to predict exact runtime.
 
+## Core module usage
+
+Validate all catalogue and preset files:
+
+```bash
+python3 -m workbench.core.catalogue validate
+```
+
+Search events by id, name, alias or type:
+
+```bash
+python3 -m workbench.core.catalogue search xaver
+python3 -m workbench.core.catalogue search storm
+```
+
+Generate a Workbench job config from an event and optional presets:
+
+```bash
+python3 -m workbench.core.catalogue build-job xaver \
+  --domain northern-germany-9km \
+  --resolution balanced-local \
+  --mode dry-run
+```
+
+Programmatic usage for the future local API:
+
+```python
+from workbench.core.catalogue import build_job_config, resolve_event, search_events
+
+matches = search_events("xaver")
+event = resolve_event("Xaver")
+job_config = build_job_config("xaver", domain_id="northern-germany-9km")
+```
+
 ## How the UI should use the catalogue
 
-1. Load `catalogue.json`, `domains.json` and `resolutions.json`.
-2. Build a search index from `id`, `name`, `aliases` and `event_type`.
-3. When the user selects an event, load `period`, `default_domain`, `domains`,
-   `default_resolution_preset` and `suggested_outputs`.
-4. Populate the form using the selected domain preset.
-5. Show alternative domain/resolution choices with warning levels.
-6. Generate a Workbench job config by copying the selected preset values into
-   the job `domain` object.
-7. Validate the generated config with `workbench/validate.py` before enabling
-   job execution.
+The UI should not reimplement catalogue rules.  It should call the local API, and
+the local API should call `workbench.core.catalogue`.
+
+Recommended flow:
+
+1. API loads the catalogue using `load_catalogue()`.
+2. API exposes `search_events(query)` results to the UI.
+3. UI displays events, domain presets, warning levels and output products.
+4. User selects a domain/resolution preset.
+5. API calls `build_job_config(...)`.
+6. API validates the generated config using the existing Workbench validator.
+7. UI receives a ready-to-run Workbench job config.
+
+For a static-only prototype, JavaScript may read the JSON files directly, but any
+logic added there should be treated as temporary and migrated back into
+`workbench.core` or the local API.
 
 ## Adding a new event
 
@@ -158,7 +217,13 @@ sh ci/test-event-catalogue.sh
 
 ## Validation
 
-`ci/test-event-catalogue.sh` validates:
+`ci/test-event-catalogue.sh` is intentionally a thin wrapper around:
+
+```bash
+python3 -m workbench.core.catalogue validate
+```
+
+The core validation checks:
 
 - all required event fields
 - aliases and searchability
