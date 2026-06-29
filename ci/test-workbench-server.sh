@@ -65,7 +65,7 @@ if server_log.exists():
 raise SystemExit(1)
 PY
 
-python3 - "${PORT}" "${TMP}" <<'PY'
+python3 - "${PORT}" "${TMP}" "${REPO_ROOT}" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -74,6 +74,7 @@ from urllib.request import Request, urlopen
 
 port = sys.argv[1]
 tmp = Path(sys.argv[2])
+repo_root = Path(sys.argv[3]).resolve()
 base = f"http://127.0.0.1:{port}"
 
 
@@ -107,7 +108,7 @@ assert xaver["event"]["id"] == "xaver"
 assert len(xaver["domain_presets"]) >= 2
 assert len(xaver["resolution_presets"]) >= 1
 
-run_dir = tmp / "api-dry-run"
+user_requested_run_dir = tmp / "api-dry-run-user-requested"
 preview = request(
     "POST",
     "/api/jobs/preview",
@@ -117,7 +118,7 @@ preview = request(
         "resolution": "quick-preview",
         "mode": "dry-run",
         "job_id": "api-ci-dry-run",
-        "output_directory": str(run_dir),
+        "output_directory": str(user_requested_run_dir),
     },
 )
 assert preview["ok"] is True
@@ -139,19 +140,27 @@ created = request("POST", "/api/jobs", {"config": config, "start": True}, expect
 assert created["ok"] is True
 assert created["job"]["status"]["status"] == "succeeded"
 assert created["job"]["job_id"] == "api-ci-dry-run"
+assert created["job"]["run_token"]
 
 status = request("GET", "/api/jobs/api-ci-dry-run")
 assert status["ok"] is True
 assert status["job"]["status"]["status"] == "succeeded"
-assert Path(status["job"]["run_dir"]).is_dir()
+actual_run_dir = Path(status["job"]["run_dir"]).resolve()
+assert actual_run_dir.is_dir()
+assert actual_run_dir != user_requested_run_dir.resolve()
+assert repo_root / "workbench-runs" / "api-runs" in actual_run_dir.parents
+assert not user_requested_run_dir.exists(), "API must not create user-requested output paths"
 
 logs = request("GET", "/api/jobs/api-ci-dry-run/logs")
 assert logs["ok"] is True
 assert any(log["name"] == "workbench.log" for log in logs["logs"])
+assert all("/" not in log["relative_path"] and "\\" not in log["relative_path"] for log in logs["logs"])
+assert all("path" not in log for log in logs["logs"])
 
 outputs = request("GET", "/api/jobs/api-ci-dry-run/outputs")
 assert outputs["ok"] is True
 assert isinstance(outputs["outputs"], list)
+assert all("path" not in output for output in outputs["outputs"])
 
 visualization = request("GET", "/api/jobs/api-ci-dry-run/visualization")
 assert visualization["ok"] is True
