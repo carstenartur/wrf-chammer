@@ -11,12 +11,15 @@ Security model: local development only.  The default bind address is
 from __future__ import annotations
 
 import argparse
+import copy
+import ipaddress
 import json
 import os
 import re
 import subprocess
 import sys
 import time
+import uuid
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -38,6 +41,9 @@ from workbench.core.catalogue import (  # noqa: E402
 from workbench.validate import validate_config  # noqa: E402
 
 JOB_ID_RE = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
+RUN_TOKEN_RE = re.compile(r"^[0-9a-f]{32}$")
+MAX_REQUEST_BYTES = 1024 * 1024
+MAX_LOG_BYTES = 200 * 1024
 
 
 class ApiError(Exception):
@@ -57,8 +63,11 @@ class WorkbenchApiServer(ThreadingHTTPServer):
     def __init__(self, server_address: tuple[str, int], handler_class: type[BaseHTTPRequestHandler], repo_root: Path):
         super().__init__(server_address, handler_class)
         self.repo_root = repo_root.resolve()
-        self.index_dir = self.repo_root / "workbench-runs" / ".api-index"
-        self.index_dir.mkdir(parents=True, exist_ok=True)
+        self.api_runs_dir = self.repo_root / "workbench-runs" / "api-runs"
+        self.api_runs_dir.mkdir(parents=True, exist_ok=True)
+        self.index_path = self.api_runs_dir / "index.json"
+        if not self.index_path.exists():
+            self.index_path.write_text(json.dumps({"jobs": {}}, indent=2) + "\n", encoding="utf-8")
 
 
 class WorkbenchApiHandler(BaseHTTPRequestHandler):
@@ -68,14 +77,38 @@ class WorkbenchApiHandler(BaseHTTPRequestHandler):
 
     # ── HTTP plumbing ────────────────────────────────────────────────────────
 
+    def _is_loopback_client(self) -> bool:
+        try:
+            return ipaddress.ip_address(self.client_address[0]).is_loopback
+        except ValueError:
+            return False
+
+    def _allowed_origin(self) -> str | None:
+        origin = self.headers.get("Origin")
+        if not origin:
+            return None
+        parsed = urlparse(origin)
+        if parsed.scheme != "http":
+            return None
+        if parsed.hostname in {"localhost", "127.0.0.1", "::1"}:
+            return origin
+        return None
+
+    def _require_local_client(self) -> None:
+        if not self._is_loopback_client():
+            raise ApiError(HTTPStatus.FORBIDDEN, "forbidden", "Workbench API only accepts loopback clients")
+        if self.headers.get("Origin") and self._allowed_origin() is None:
+            raise ApiError(HTTPStatus.FORBIDDEN, "forbidden_origin", "Origin is not allowed for the local Workbench API")
+
     def _send_json(self, status: int, payload: dict[str, Any]) -> None:
         body = json.dumps(payload, indent=2).encode("utf-8") + b"\n"
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        allowed_origin = self._allowed_origin()
+        if allowed_origin:
+            self.send_header("Access-Control-Allow-Origin", allowed_origin)
+            self.send_header("Vary", "Origin")
         self.end_headers()
         self.wfile.write(body)
 
@@ -91,6 +124,8 @@ class WorkbenchApiHandler(BaseHTTPRequestHandler):
             length = int(length_header)
         except ValueError as exc:
             raise ApiError(HTTPStatus.BAD_REQUEST, "bad_content_length", "Invalid Content-Length header") from exc
+        if length > MAX_REQUEST_BYTES:
+            raise ApiError(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "request_too_large", "Request body is too large")
         try:
             raw = self.rfile.read(length).decode("utf-8") if length else "{}"
             payload = json.loads(raw)
@@ -101,14 +136,22 @@ class WorkbenchApiHandler(BaseHTTPRequestHandler):
         return payload
 
     def do_OPTIONS(self) -> None:  # noqa: N802
-        self.send_response(HTTPStatus.NO_CONTENT)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.end_headers()
+        try:
+            self._require_local_client()
+            self.send_response(HTTPStatus.NO_CONTENT)
+            allowed_origin = self._allowed_origin()
+            if allowed_origin:
+                self.send_header("Access-Control-Allow-Origin", allowed_origin)
+                self.send_header("Vary", "Origin")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.end_headers()
+        except ApiError as exc:
+            self._send_error(exc.status, exc.code, exc.message, exc.details)
 
     def do_GET(self) -> None:  # noqa: N802
         try:
+            self._require_local_client()
             parsed = urlparse(self.path)
             path = parsed.path.rstrip("/") or "/"
             query = parse_qs(parsed.query)
@@ -134,6 +177,7 @@ class WorkbenchApiHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         try:
+            self._require_local_client()
             parsed = urlparse(self.path)
             path = parsed.path.rstrip("/") or "/"
 
@@ -251,38 +295,59 @@ class WorkbenchApiHandler(BaseHTTPRequestHandler):
 
     def _handle_create_job(self) -> None:
         payload = self._read_json()
-        config = self._extract_config(payload)
-        start = bool(payload.get("start", True))
-        errors = self._validate_config(config)
+        submitted_config = self._extract_config(payload)
+        errors = self._validate_config(submitted_config)
         if errors:
             self._send_json(HTTPStatus.UNPROCESSABLE_ENTITY, {"ok": False, "valid": False, "errors": errors})
             return
 
-        job_id = config["id"]
+        job_id = submitted_config["id"]
         if not JOB_ID_RE.match(job_id):
             raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_job_id", f"Invalid job id: {job_id!r}")
 
-        run_dir = self._resolve_run_dir(config)
-        run_dir.mkdir(parents=True, exist_ok=True)
+        run_token = self._new_run_token()
+        run_dir = self._run_dir_from_token(run_token)
+        run_dir.mkdir(parents=True, exist_ok=False)
+
+        config = self._server_managed_config(submitted_config, run_token)
+        sanitized_errors = self._validate_config(config)
+        if sanitized_errors:
+            self._send_json(HTTPStatus.UNPROCESSABLE_ENTITY, {"ok": False, "valid": False, "errors": sanitized_errors})
+            return
+
         config_path = run_dir / "api-config.json"
         config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
-        self._write_index(job_id, run_dir, config_path, state="created")
+        self._write_index_record(job_id, run_token, state="created")
 
+        start = bool(payload.get("start", True))
         if not start:
-            self._send_json(HTTPStatus.CREATED, {"ok": True, "job": self._job_summary(job_id, run_dir)})
+            self._send_json(HTTPStatus.CREATED, {"ok": True, "job": self._job_summary(job_id)})
             return
 
         result = self._run_workbench(config_path, run_dir)
-        self._write_index(job_id, run_dir, config_path, state=result["status"])
+        self._write_index_record(job_id, run_token, state=result["status"])
         status_code = HTTPStatus.CREATED if result["exit_code"] == 0 else HTTPStatus.INTERNAL_SERVER_ERROR
-        self._send_json(status_code, {"ok": result["exit_code"] == 0, "job": self._job_summary(job_id, run_dir), "run": result})
+        self._send_json(status_code, {"ok": result["exit_code"] == 0, "job": self._job_summary(job_id), "run": result})
 
-    def _resolve_run_dir(self, config: dict[str, Any]) -> Path:
-        outputs_dir = config["outputs"]["directory"]
-        path = Path(outputs_dir)
-        if path.is_absolute():
-            return path
-        return self.server.repo_root / path
+    def _server_managed_config(self, submitted_config: dict[str, Any], run_token: str) -> dict[str, Any]:
+        config = copy.deepcopy(submitted_config)
+        config.setdefault("outputs", {})
+        # Never use a user-supplied filesystem path for API execution.  The API
+        # owns execution directories and writes a server-generated relative path
+        # into the config consumed by workbench/run.sh.
+        config["outputs"]["directory"] = f"workbench-runs/api-runs/{run_token}"
+        metadata = config.setdefault("metadata", {})
+        if isinstance(metadata, dict):
+            metadata["api_run_token"] = run_token
+        return config
+
+    def _new_run_token(self) -> str:
+        return uuid.uuid4().hex
+
+    def _run_dir_from_token(self, run_token: str) -> Path:
+        if not RUN_TOKEN_RE.match(run_token):
+            raise ApiError(HTTPStatus.INTERNAL_SERVER_ERROR, "bad_run_token", "Stored run token is invalid")
+        return self.server.api_runs_dir / run_token
 
     def _run_workbench(self, config_path: Path, run_dir: Path) -> dict[str, Any]:
         start_time = time.time()
@@ -295,14 +360,15 @@ class WorkbenchApiHandler(BaseHTTPRequestHandler):
             stderr=subprocess.PIPE,
             check=False,
         )
-        (run_dir / "logs").mkdir(parents=True, exist_ok=True)
-        (run_dir / "logs" / "api-run.log").write_text(
-            "COMMAND: " + " ".join(command) + "\n\n" +
-            "STDOUT:\n" + completed.stdout + "\nSTDERR:\n" + completed.stderr,
+        logs_dir = run_dir / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        (logs_dir / "api-run.log").write_text(
+            "COMMAND: sh workbench/run.sh <server-managed-config>\n\n"
+            + "STDOUT:\n" + completed.stdout + "\nSTDERR:\n" + completed.stderr,
             encoding="utf-8",
         )
         return {
-            "command": command,
+            "command": ["sh", "workbench/run.sh", "<server-managed-config>"],
             "exit_code": completed.returncode,
             "duration_seconds": round(time.time() - start_time, 3),
             "status": "succeeded" if completed.returncode == 0 else "failed",
@@ -310,83 +376,102 @@ class WorkbenchApiHandler(BaseHTTPRequestHandler):
 
     # ── Job lookup, logs and outputs ─────────────────────────────────────────
 
-    def _index_path(self, job_id: str) -> Path:
-        if not JOB_ID_RE.match(job_id):
-            raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_job_id", f"Invalid job id: {job_id!r}")
-        return self.server.index_dir / f"{job_id}.json"
+    def _read_index(self) -> dict[str, Any]:
+        try:
+            index = json.loads(self.server.index_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            index = {"jobs": {}}
+        if not isinstance(index, dict) or not isinstance(index.get("jobs"), dict):
+            index = {"jobs": {}}
+        return index
 
-    def _write_index(self, job_id: str, run_dir: Path, config_path: Path, state: str) -> None:
-        self.server.index_dir.mkdir(parents=True, exist_ok=True)
-        record = {
+    def _write_index(self, index: dict[str, Any]) -> None:
+        self.server.index_path.write_text(json.dumps(index, indent=2) + "\n", encoding="utf-8")
+
+    def _write_index_record(self, job_id: str, run_token: str, state: str) -> None:
+        index = self._read_index()
+        index["jobs"][job_id] = {
             "job_id": job_id,
-            "run_dir": str(run_dir),
-            "config_path": str(config_path),
+            "run_token": run_token,
             "state": state,
             "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }
-        self._index_path(job_id).write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+        self._write_index(index)
 
-    def _load_index(self, job_id: str) -> dict[str, Any]:
-        path = self._index_path(job_id)
-        if path.is_file():
-            return json.loads(path.read_text(encoding="utf-8"))
+    def _load_index_record(self, job_id: str) -> dict[str, Any]:
+        if not JOB_ID_RE.match(job_id):
+            raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_job_id", f"Invalid job id: {job_id!r}")
+        record = self._read_index().get("jobs", {}).get(job_id)
+        if not isinstance(record, dict):
+            raise ApiError(HTTPStatus.NOT_FOUND, "job_not_found", f"Unknown job: {job_id}")
+        run_token = record.get("run_token")
+        if not isinstance(run_token, str) or not RUN_TOKEN_RE.match(run_token):
+            raise ApiError(HTTPStatus.INTERNAL_SERVER_ERROR, "bad_run_token", "Stored run token is invalid")
+        return record
 
-        # Best-effort fallback for manually created run directories under
-        # workbench-runs/.  This keeps GET status useful even if the server was
-        # restarted and the index is missing.
-        runs_root = self.server.repo_root / "workbench-runs"
-        if runs_root.is_dir():
-            for status_path in runs_root.glob("*/status.json"):
-                try:
-                    status = json.loads(status_path.read_text(encoding="utf-8"))
-                except (OSError, json.JSONDecodeError):
-                    continue
-                if status.get("job_id") == job_id:
-                    run_dir = status_path.parent
-                    return {"job_id": job_id, "run_dir": str(run_dir), "state": status.get("status", "unknown")}
-        raise ApiError(HTTPStatus.NOT_FOUND, "job_not_found", f"Unknown job: {job_id}")
-
-    def _job_summary(self, job_id: str, run_dir: Path | None = None) -> dict[str, Any]:
-        record = self._load_index(job_id) if run_dir is None else {"job_id": job_id, "run_dir": str(run_dir)}
-        resolved_run_dir = Path(record["run_dir"])
-        status = self._read_optional_json(resolved_run_dir / "status.json")
-        job = self._read_optional_json(resolved_run_dir / "job.json")
-        logs_dir = resolved_run_dir / "logs"
-        outputs_dir = resolved_run_dir / "outputs"
-        visualization_dir = resolved_run_dir / "visualizations"
+    def _job_summary(self, job_id: str) -> dict[str, Any]:
+        record = self._load_index_record(job_id)
+        run_token = record["run_token"]
+        run_dir = self._run_dir_from_token(run_token)
+        status = self._read_optional_json(run_dir / "status.json")
+        job = self._read_optional_json(run_dir / "job.json")
+        logs_dir = run_dir / "logs"
+        outputs_dir = run_dir / "outputs"
+        visualization_dir = run_dir / "visualizations"
         return {
             "job_id": job_id,
-            "run_dir": str(resolved_run_dir),
+            "run_token": run_token,
+            "run_dir": str(run_dir),
             "status": status or {"job_id": job_id, "status": record.get("state", "created")},
             "job": job,
             "logs": self._list_files(logs_dir),
             "outputs": self._list_files(outputs_dir),
             "visualization": {
-                "available": (visualization_dir / "metadata.json").is_file(),
+                "available": self._safe_file_exists(visualization_dir / "metadata.json", visualization_dir),
                 "path": str(visualization_dir),
-                "metadata": str(visualization_dir / "metadata.json") if (visualization_dir / "metadata.json").is_file() else None,
+                "metadata": "metadata.json" if self._safe_file_exists(visualization_dir / "metadata.json", visualization_dir) else None,
             },
         }
 
     def _read_optional_json(self, path: Path) -> Any | None:
+        parent = path.parent
+        if not self._safe_file_exists(path, parent):
+            return None
         try:
-            if path.is_file():
-                return json.loads(path.read_text(encoding="utf-8"))
+            return json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return None
-        return None
+
+    def _safe_file_exists(self, path: Path, base_dir: Path) -> bool:
+        if path.is_symlink() or not path.is_file():
+            return False
+        try:
+            base_resolved = base_dir.resolve()
+            resolved = path.resolve()
+            return os.path.commonpath([str(base_resolved), str(resolved)]) == str(base_resolved)
+        except OSError:
+            return False
 
     def _list_files(self, directory: Path, limit: int = 100) -> list[dict[str, Any]]:
-        if not directory.is_dir():
+        if directory.is_symlink() or not directory.is_dir():
+            return []
+        try:
+            base_resolved = directory.resolve()
+        except OSError:
             return []
         files: list[dict[str, Any]] = []
-        for path in sorted(p for p in directory.rglob("*") if p.is_file())[:limit]:
-            files.append({
-                "name": path.name,
-                "path": str(path),
-                "relative_path": str(path.relative_to(directory)),
-                "size_bytes": path.stat().st_size,
-            })
+        for path in sorted(p for p in directory.rglob("*") if not p.is_symlink() and p.is_file())[:limit]:
+            try:
+                resolved = path.resolve()
+                if os.path.commonpath([str(base_resolved), str(resolved)]) != str(base_resolved):
+                    continue
+                files.append({
+                    "name": path.name,
+                    "relative_path": str(path.relative_to(directory)),
+                    "size_bytes": path.stat().st_size,
+                })
+            except OSError:
+                continue
         return files
 
     def _handle_get_job_path(self, path: str) -> None:
@@ -412,12 +497,18 @@ class WorkbenchApiHandler(BaseHTTPRequestHandler):
         self._send_error(HTTPStatus.NOT_FOUND, "not_found", f"Unknown endpoint: {path}")
 
     def _handle_get_logs(self, job_id: str) -> None:
-        record = self._load_index(job_id)
-        logs_dir = Path(record["run_dir"]) / "logs"
+        record = self._load_index_record(job_id)
+        run_dir = self._run_dir_from_token(record["run_token"])
+        logs_dir = run_dir / "logs"
         logs = []
         for entry in self._list_files(logs_dir):
-            path = Path(entry["path"])
-            content = path.read_text(encoding="utf-8", errors="replace")
+            relative_path = entry["relative_path"]
+            if "/" in relative_path or "\\" in relative_path:
+                continue
+            path = logs_dir / relative_path
+            if not self._safe_file_exists(path, logs_dir):
+                continue
+            content = path.read_text(encoding="utf-8", errors="replace")[:MAX_LOG_BYTES]
             logs.append({**entry, "content": content})
         self._send_json(HTTPStatus.OK, {"ok": True, "job_id": job_id, "logs": logs})
 
