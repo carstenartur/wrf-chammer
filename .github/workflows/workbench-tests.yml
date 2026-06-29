@@ -22,5 +22,8 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Validate event catalogue and presets
+        run: sh ci/test-event-catalogue.sh
+
       - name: Run Workbench tests
         run: sh ci/test-workbench.sh
