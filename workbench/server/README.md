@@ -12,11 +12,41 @@ validation and `workbench/run.sh` for execution.
 This is a local development server.
 
 - Default bind address: `127.0.0.1`
+- Only loopback clients are accepted
+- No wildcard CORS; only loopback HTTP origins are reflected
 - No authentication yet
 - Executes local Workbench scripts
 - Not intended for public internet exposure
 
 Do not bind it to `0.0.0.0` on an untrusted network.
+
+## Path and execution hardening
+
+API-created jobs do not run in user-supplied filesystem paths.
+
+Even if a submitted or previewed job config contains `outputs.directory`, the
+server replaces it for execution with a server-generated directory:
+
+```text
+workbench-runs/api-runs/<server-generated-token>/
+```
+
+The API writes the executable config to:
+
+```text
+workbench-runs/api-runs/<server-generated-token>/api-config.json
+```
+
+The job index is stored in a fixed file:
+
+```text
+workbench-runs/api-runs/index.json
+```
+
+User-provided job ids are used only as validated logical ids and dictionary
+keys; they are not used as filenames.  Logs and output listings are read only
+from server-managed run directories, do not follow symlinks and do not expose
+absolute per-file paths in the JSON response.
 
 ## Start the server
 
@@ -66,6 +96,9 @@ a Workbench job config plus validation result.  It is the preferred bridge for
 the future web UI because the UI does not need to duplicate catalogue or WRF job
 configuration rules.
 
+`output_directory` in preview responses is informational only.  `POST /api/jobs`
+will replace the execution directory with a server-managed API run directory.
+
 ### Validate a job config
 
 ```http
@@ -108,18 +141,6 @@ Content-Type: application/json
 }
 ```
 
-The server writes the submitted config to:
-
-```text
-<outputs.directory>/api-config.json
-```
-
-Then it runs:
-
-```text
-sh workbench/run.sh <outputs.directory>/api-config.json
-```
-
 The first implementation runs jobs synchronously.  That is sufficient for short
 `dry-run` API flows and CI smoke tests.  A future asynchronous runner can keep
 the same API shape and replace only the execution backend.
@@ -132,15 +153,6 @@ GET /api/jobs/{id}/logs
 GET /api/jobs/{id}/outputs
 GET /api/jobs/{id}/visualization
 ```
-
-The API stores a small local job index under:
-
-```text
-workbench-runs/.api-index/
-```
-
-This lets the API resolve jobs even when their output directory is absolute or
-outside the default `workbench-runs/<id>` pattern.
 
 ### Cancellation placeholder
 
@@ -181,6 +193,6 @@ sh ci/test-workbench-server.sh
 ```
 
 The test starts the server on a random local port, exercises events, preview,
-validation, dry-run execution, status, logs, outputs, visualization metadata and
-the cancellation placeholder.  It requires no Docker, CDS credentials or HPC
-infrastructure.
+validation, dry-run execution, status, logs, outputs, visualization metadata,
+server-managed run paths and the cancellation placeholder.  It requires no
+Docker, CDS credentials or HPC infrastructure.
