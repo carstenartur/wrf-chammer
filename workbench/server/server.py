@@ -137,6 +137,9 @@ class WorkbenchApiHandler(BaseHTTPRequestHandler):
             parsed = urlparse(self.path)
             path = parsed.path.rstrip("/") or "/"
 
+            if path == "/api/jobs/preview":
+                self._handle_preview_job()
+                return
             if path == "/api/jobs/validate":
                 self._handle_validate_job()
                 return
@@ -191,7 +194,7 @@ class WorkbenchApiHandler(BaseHTTPRequestHandler):
             raise ApiError(HTTPStatus.NOT_FOUND, "event_not_found", str(exc)) from exc
         self._send_json(HTTPStatus.OK, {"ok": True, **self._event_detail(event, catalogue)})
 
-    # ── Job validation and execution ─────────────────────────────────────────
+    # ── Job validation, preview and execution ────────────────────────────────
 
     def _extract_config(self, payload: dict[str, Any]) -> dict[str, Any]:
         config = payload.get("config", payload)
@@ -203,6 +206,39 @@ class WorkbenchApiHandler(BaseHTTPRequestHandler):
         # workbench.validate resolves relative ERA5 paths from cwd, so the server
         # process is started with cwd=repo_root and main() also chdirs there.
         return validate_config(config)
+
+    def _handle_preview_job(self) -> None:
+        payload = self._read_json()
+        event_ref = payload.get("event") or payload.get("event_id") or payload.get("event_ref")
+        if not isinstance(event_ref, str) or not event_ref.strip():
+            raise ApiError(HTTPStatus.BAD_REQUEST, "missing_event", "Field 'event' is required")
+        try:
+            config = build_job_config(
+                event_ref,
+                domain_id=payload.get("domain") or payload.get("domain_id"),
+                resolution_preset_id=(
+                    payload.get("resolution")
+                    or payload.get("resolution_preset")
+                    or payload.get("resolution_preset_id")
+                ),
+                mode=payload.get("mode", "dry-run"),
+                job_id=payload.get("job_id"),
+                output_directory=payload.get("output_directory"),
+                input_source=payload.get("input_source", "era5"),
+                catalogue=self._catalogue(),
+            )
+        except EventNotFoundError as exc:
+            raise ApiError(HTTPStatus.NOT_FOUND, "event_not_found", str(exc)) from exc
+        except PresetNotFoundError as exc:
+            raise ApiError(HTTPStatus.UNPROCESSABLE_ENTITY, "preset_not_found", str(exc)) from exc
+        except CatalogueError as exc:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "catalogue_error", str(exc)) from exc
+
+        errors = self._validate_config(config)
+        if errors:
+            self._send_json(HTTPStatus.UNPROCESSABLE_ENTITY, {"ok": False, "valid": False, "errors": errors, "config": config})
+        else:
+            self._send_json(HTTPStatus.OK, {"ok": True, "valid": True, "errors": [], "config": config})
 
     def _handle_validate_job(self) -> None:
         payload = self._read_json()
