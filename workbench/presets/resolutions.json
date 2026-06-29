@@ -1,0 +1,45 @@
+{
+  "schema_version": "1.0",
+  "resolution_presets": {
+    "quick-preview": {
+      "id": "quick-preview",
+      "label": "Quick preview",
+      "description": "Coarse run intended to validate event, time window and approximate domain before spending time on a detailed simulation.",
+      "suggested_dx_km": 27,
+      "suggested_dy_km": 27,
+      "suggested_max_grid_cells": 3000,
+      "runtime_class": "short",
+      "warning_level": "low"
+    },
+    "balanced-local": {
+      "id": "balanced-local",
+      "label": "Balanced local run",
+      "description": "Default local run class for a single-domain historical event replay on a workstation or GitHub-hosted test-sized setup.",
+      "suggested_dx_km": 9,
+      "suggested_dy_km": 9,
+      "suggested_max_grid_cells": 8000,
+      "runtime_class": "medium",
+      "warning_level": "medium"
+    },
+    "detailed-local": {
+      "id": "detailed-local",
+      "label": "Detailed local run",
+      "description": "Smaller, higher-resolution experiment that should only be selected after a coarse preview has validated the setup.",
+      "suggested_dx_km": 3,
+      "suggested_dy_km": 3,
+      "suggested_max_grid_cells": 12000,
+      "runtime_class": "long",
+      "warning_level": "high"
+    },
+    "expensive-high-resolution": {
+      "id": "expensive-high-resolution",
+      "label": "Expensive high-resolution run",
+      "description": "Placeholder for future very high-resolution domains. The UI should warn users before selecting this class.",
+      "suggested_dx_km": 1,
+      "suggested_dy_km": 1,
+      "suggested_max_grid_cells": 20000,
+      "runtime_class": "very-long",
+      "warning_level": "critical"
+    }
+  }
+}
