@@ -2,6 +2,12 @@
 
 This document is the repeatable acceptance scenario for the WRF Workbench.
 
+For a screenshot-based walkthrough of the browser flow, see:
+
+```text
+doc/USER_GUIDE.md
+```
+
 It connects the user-facing workflow:
 
 ```text
