@@ -50,6 +50,9 @@ met_em.d*
 # Workbench run outputs
 workbench-runs/
 
+# JavaScript test dependencies
+node_modules/
+
 # Python cache
 __pycache__/
 *.py[cod]

@@ -1,0 +1,47 @@
+const fs = require('fs');
+const path = require('path');
+const { test, expect } = require('@playwright/test');
+
+const repoRoot = path.resolve(__dirname, '../..');
+const screenshotDir = path.join(repoRoot, 'doc', 'user-guide', 'screenshots');
+
+async function capture(page, fileName) {
+  fs.mkdirSync(screenshotDir, { recursive: true });
+  await page.screenshot({
+    path: path.join(screenshotDir, fileName),
+    fullPage: true,
+  });
+}
+
+test('capture the Xaver user-guide UI flow', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByText('Event to simulation')).toBeVisible();
+  await expect(page.getByText('API online')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Select xaver/i })).toBeVisible();
+  await capture(page, 'xaver-01-search.png');
+
+  await page.getByRole('button', { name: /Select xaver/i }).click();
+  await expect(page.locator('#event-detail')).toContainText('Xaver');
+  await expect(page.locator('#domain-select')).toBeEnabled();
+  await expect(page.locator('#resolution-select')).toBeEnabled();
+  await capture(page, 'xaver-02-event-selected.png');
+
+  await page.locator('#domain-select').selectOption('northern-germany-27km');
+  await page.locator('#resolution-select').selectOption('quick-preview');
+  await expect(page.locator('#domain-label')).toContainText('northern-germany-27km');
+  await capture(page, 'xaver-03-domain-resolution.png');
+
+  await page.getByRole('button', { name: 'Preview job config' }).click();
+  await expect(page.locator('#config-preview')).toContainText('"id"');
+  await expect(page.locator('#config-preview')).toContainText('xaver-ui-dry-run');
+  await expect(page.getByText('Preview is valid and ready to run.')).toBeVisible();
+  await capture(page, 'xaver-04-preview-config.png');
+
+  await page.getByRole('button', { name: 'Start dry-run' }).click();
+  await expect(page.locator('#job-status')).toContainText('succeeded', { timeout: 30_000 });
+  await expect(page.getByText('Dry-run finished. Status and logs are available below.')).toBeVisible();
+  await capture(page, 'xaver-05-dry-run-status.png');
+
+  await expect(page.locator('#job-logs')).toContainText('Dry run complete');
+  await capture(page, 'xaver-06-logs.png');
+});

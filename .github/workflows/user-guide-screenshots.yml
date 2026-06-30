@@ -1,0 +1,44 @@
+name: User Guide Screenshots
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'workbench/web/**'
+      - 'workbench/server/**'
+      - 'workbench/e2e/**'
+      - 'ci/generate-user-guide-screenshots.sh'
+      - 'doc/USER_GUIDE.md'
+      - 'doc/user-guide/**'
+      - '.github/workflows/user-guide-screenshots.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  xaver-user-guide-screenshots:
+    name: Generate Xaver user-guide screenshots
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Generate screenshots
+        run: sh ci/generate-user-guide-screenshots.sh
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: xaver-user-guide-screenshots
+          path: doc/user-guide/screenshots/*.png
+          if-no-files-found: error
