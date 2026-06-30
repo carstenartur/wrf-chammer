@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WRF Workbench</title>
+  <link rel="stylesheet" href="/web/styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <p class="eyebrow">Local WRF Workbench</p>
+      <h1>Event to simulation</h1>
+      <p class="lede">Search an event, preview a job configuration, start a dry-run and inspect status/logs from the local API.</p>
+    </div>
+    <span id="api-status" class="status-pill">Checking API…</span>
+  </header>
+
+  <main class="layout">
+    <section class="panel search-panel" aria-labelledby="event-search-title">
+      <h2 id="event-search-title">1. Search event</h2>
+      <form id="search-form" class="search-form">
+        <label for="event-query">Event name</label>
+        <div class="inline-form">
+          <input id="event-query" name="query" value="Xaver" autocomplete="off">
+          <button type="submit">Search</button>
+        </div>
+      </form>
+      <div id="event-results" class="results" aria-live="polite"></div>
+    </section>
+
+    <section class="panel" aria-labelledby="event-detail-title">
+      <h2 id="event-detail-title">2. Select presets</h2>
+      <div id="event-detail" class="empty-state">Select an event to see its defaults.</div>
+      <div class="form-grid">
+        <label for="domain-select">Domain preset</label>
+        <select id="domain-select" disabled></select>
+        <label for="resolution-select">Resolution preset</label>
+        <select id="resolution-select" disabled></select>
+        <label for="mode-select">Mode</label>
+        <select id="mode-select">
+          <option value="dry-run">dry-run</option>
+        </select>
+      </div>
+      <div id="domain-preview" class="domain-preview" aria-label="Domain preview">
+        <svg viewBox="0 0 360 190" role="img" aria-labelledby="domain-preview-title domain-preview-desc">
+          <title id="domain-preview-title">Domain preview</title>
+          <desc id="domain-preview-desc">Simplified rectangular preview of the selected simulation domain.</desc>
+          <rect class="map-bg" x="10" y="10" width="340" height="170" rx="12"></rect>
+          <rect id="domain-box" class="domain-box" x="80" y="45" width="200" height="100" rx="6"></rect>
+          <text id="domain-label" x="180" y="100" text-anchor="middle">No domain selected</text>
+        </svg>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="job-title">
+      <h2 id="job-title">3. Preview and run</h2>
+      <div class="actions">
+        <button id="preview-job" disabled>Preview job config</button>
+        <button id="run-job" disabled>Start dry-run</button>
+      </div>
+      <div id="job-message" class="message" aria-live="polite"></div>
+      <h3>Generated config</h3>
+      <pre id="config-preview" class="code-box">No config preview yet.</pre>
+    </section>
+
+    <section class="panel wide" aria-labelledby="status-title">
+      <h2 id="status-title">4. Job status and logs</h2>
+      <div id="job-status" class="empty-state">No job has been started.</div>
+      <div class="actions">
+        <button id="refresh-job" disabled>Refresh status</button>
+      </div>
+      <h3>Logs</h3>
+      <pre id="job-logs" class="code-box">No logs yet.</pre>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <p>Same-origin local UI served by <code>workbench.server.server</code>. The browser calls only the local Workbench API.</p>
+  </footer>
+
+  <script src="/web/app.js"></script>
+</body>
+</html>
