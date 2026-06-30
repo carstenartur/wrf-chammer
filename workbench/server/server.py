@@ -51,6 +51,7 @@ class WorkbenchApiServer(ThreadingHTTPServer):
     def __init__(self, address: tuple[str, int], handler: type[BaseHTTPRequestHandler], repo_root: Path):
         super().__init__(address, handler)
         self.repo_root = repo_root.resolve()
+        self.web_dir = self.repo_root / "workbench" / "web"
         self.api_runs_dir = self.repo_root / "workbench-runs" / "api-runs"
         self.api_runs_dir.mkdir(parents=True, exist_ok=True)
         self.index_path = self.api_runs_dir / "index.json"
@@ -87,19 +88,41 @@ class WorkbenchApiHandler(BaseHTTPRequestHandler):
         if not self._is_loopback_origin():
             raise ApiError(HTTPStatus.FORBIDDEN, "forbidden_origin", "Origin is not allowed")
 
-    def _send_json(self, status: int, payload: dict[str, Any]) -> None:
-        body = json.dumps(payload, indent=2).encode("utf-8") + b"\n"
+    def _send_bytes(self, status: int, body: bytes, content_type: str) -> None:
         self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
+
+    def _send_json(self, status: int, payload: dict[str, Any]) -> None:
+        body = json.dumps(payload, indent=2).encode("utf-8") + b"\n"
+        self._send_bytes(status, body, "application/json; charset=utf-8")
 
     def _send_error(self, status: int, code: str, message: str, details: Any | None = None) -> None:
         error: dict[str, Any] = {"code": code, "message": message}
         if details is not None:
             error["details"] = details
         self._send_json(status, {"ok": False, "error": error})
+
+    def _send_static_file(self, file_path: Path, content_type: str) -> None:
+        if not file_path.is_file():
+            self._send_error(HTTPStatus.NOT_FOUND, "not_found", "Static asset not found")
+            return
+        self._send_bytes(HTTPStatus.OK, file_path.read_bytes(), content_type)
+
+    def _handle_static_path(self, path: str) -> bool:
+        if path in ("/", "/web", "/web/", "/web/index.html"):
+            self._send_static_file(self.server.web_dir / "index.html", "text/html; charset=utf-8")
+            return True
+        if path == "/web/app.js":
+            self._send_static_file(self.server.web_dir / "app.js", "application/javascript; charset=utf-8")
+            return True
+        if path == "/web/styles.css":
+            self._send_static_file(self.server.web_dir / "styles.css", "text/css; charset=utf-8")
+            return True
+        return False
 
     def _read_json(self) -> dict[str, Any]:
         try:
@@ -132,6 +155,8 @@ class WorkbenchApiHandler(BaseHTTPRequestHandler):
             parsed = urlparse(self.path)
             path = parsed.path.rstrip("/") or "/"
             query = parse_qs(parsed.query)
+            if self._handle_static_path(path):
+                return
             if path == "/api/health":
                 self._send_json(HTTPStatus.OK, {"ok": True, "status": "ok"})
             elif path == "/api/events":
@@ -432,13 +457,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the local WRF Workbench API server")
     parser.add_argument("--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=8080, help="Bind port (default: 8080)")
-    parser.add_argument("--repo-root", default=str(Path(__file__).resolve().parents[2]), help="Repository root")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
-    repo_root = Path(args.repo_root).resolve()
+    repo_root = Path(__file__).resolve().parents[2]
     os.chdir(repo_root)
     server = WorkbenchApiServer((args.host, args.port), WorkbenchApiHandler, repo_root)
     print(f"Workbench API listening on http://{args.host}:{args.port}", flush=True)
