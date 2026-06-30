@@ -30,3 +30,6 @@ jobs:
 
       - name: Run local Workbench API tests
         run: sh ci/test-workbench-server.sh
+
+      - name: Run local Workbench web UI tests
+        run: sh ci/test-workbench-web.sh
