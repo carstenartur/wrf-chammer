@@ -8,6 +8,8 @@
 #   dry-run        Validate config and show planned steps (no Docker required)
 #   wrf-smoke      Run the WRF idealized smoke test via wrf-reproducible:latest
 #   era5-offline   Run ERA5 offline validation via existing ci/ scripts
+#   era5-download-only  Download or verify ERA5 inputs only
+#   era5-wrf       Build a small ERA5 -> WPS -> WRF pipeline run
 #
 # Each run creates a directory at the path specified by outputs.directory
 # (relative paths are resolved from the repository root):
@@ -35,6 +37,8 @@ Supported modes:
   dry-run        Validate config and print planned steps (no Docker required)
   wrf-smoke      Run WRF idealized smoke test (requires wrf-reproducible:latest)
   era5-offline   Run ERA5 offline validation (requires Python 3)
+  era5-download-only  Download or verify ERA5 input data
+  era5-wrf       Build a small ERA5 -> WPS -> WRF pipeline run
 
 Example:
   $0 workbench/examples/xaver-dry-run.json

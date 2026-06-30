@@ -33,3 +33,6 @@ jobs:
 
       - name: Run local Workbench web UI tests
         run: sh ci/test-workbench-web.sh
+
+      - name: Run ERA5 WRF pipeline tests
+        run: sh ci/test-era5-wrf-pipeline.sh

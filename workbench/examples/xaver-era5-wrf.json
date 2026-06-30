@@ -1,0 +1,27 @@
+{
+  "id": "xaver-era5-wrf",
+  "mode": "era5-wrf",
+  "name": "Storm Xaver ERA5 to WRF Pipeline",
+  "period": {
+    "start": "2013-12-05T00:00:00Z",
+    "end": "2013-12-06T00:00:00Z"
+  },
+  "domain": {
+    "label": "northern-germany-27km",
+    "center_lat": 54.0,
+    "center_lon": 9.0,
+    "dx_km": 27,
+    "dy_km": 27,
+    "e_we": 30,
+    "e_sn": 24
+  },
+  "inputs": {
+    "source": "era5",
+    "era5": {
+      "config": "ci/era5/era5-offline-test-config.json"
+    }
+  },
+  "outputs": {
+    "directory": "workbench-runs/xaver-era5-wrf"
+  }
+}

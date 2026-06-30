@@ -15,7 +15,7 @@
     "mode": {
       "type": "string",
       "description": "Execution mode that controls which pipeline steps are run.",
-      "enum": ["dry-run", "wrf-smoke", "era5-offline", "era5-download-only"]
+      "enum": ["dry-run", "wrf-smoke", "era5-offline", "era5-download-only", "era5-wrf"]
     },
     "name": {
       "type": "string",
@@ -106,9 +106,9 @@
           "properties": {
             "config": {
               "type": "string",
-              "description": "Path to the ERA5 download request config JSON file.  Required for era5-download-only mode.",
+              "description": "Path to the ERA5 download request config JSON file.  Required for era5-download-only and era5-wrf modes.",
               "minLength": 1,
-              "examples": ["ci/era5/era5-example-config.json"]
+              "examples": ["ci/era5/era5-offline-test-config.json"]
             }
           }
         }

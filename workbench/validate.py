@@ -13,7 +13,7 @@ import re
 import sys
 
 
-VALID_MODES = {"dry-run", "wrf-smoke", "era5-offline", "era5-download-only"}
+VALID_MODES = {"dry-run", "wrf-smoke", "era5-offline", "era5-download-only", "era5-wrf"}
 VALID_SOURCES = {"era5", "none"}
 _ISO8601_RE = re.compile(r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$')
 _ID_RE = re.compile(r'^[a-z0-9]([a-z0-9-]*[a-z0-9])?$')
@@ -129,12 +129,11 @@ def validate_config(config, config_path=None):
                 f"got: {inputs['source']!r}"
             )
 
-        # era5-download-only requires inputs.era5.config in a known project path.
-        if config.get("mode") == "era5-download-only":
+        if config.get("mode") in {"era5-download-only", "era5-wrf"}:
             era5 = inputs.get("era5")
             if not isinstance(era5, dict) or not era5.get("config", "").strip():
                 errors.append(
-                    "'inputs.era5.config' is required for mode 'era5-download-only'"
+                    f"'inputs.era5.config' is required for mode {config.get('mode')!r}"
                 )
             else:
                 era5_config_path = era5["config"].strip()
