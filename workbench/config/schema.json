@@ -29,45 +29,103 @@
       "required": ["start", "end"],
       "additionalProperties": false,
       "properties": {
-        "start": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"},
-        "end": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"}
+        "start": {
+          "type": "string",
+          "description": "Simulation start time in ISO 8601 UTC format.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+          "examples": ["2013-12-05T00:00:00Z"]
+        },
+        "end": {
+          "type": "string",
+          "description": "Simulation end time in ISO 8601 UTC format.  Must be after start.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+          "examples": ["2013-12-06T00:00:00Z"]
+        }
       }
     },
     "domain": {
       "type": "object",
+      "description": "WRF domain specification.",
       "required": ["label", "center_lat", "center_lon", "dx_km", "dy_km", "e_we", "e_sn"],
       "additionalProperties": false,
       "properties": {
-        "label": {"type": "string", "minLength": 1},
-        "center_lat": {"type": "number", "minimum": -90, "maximum": 90},
-        "center_lon": {"type": "number", "minimum": -180, "maximum": 180},
-        "dx_km": {"type": "number", "exclusiveMinimum": 0},
-        "dy_km": {"type": "number", "exclusiveMinimum": 0},
-        "e_we": {"type": "integer", "minimum": 3},
-        "e_sn": {"type": "integer", "minimum": 3}
+        "label": {
+          "type": "string",
+          "description": "Human-readable domain name.",
+          "minLength": 1
+        },
+        "center_lat": {
+          "type": "number",
+          "description": "Domain center latitude in degrees north.",
+          "minimum": -90,
+          "maximum": 90
+        },
+        "center_lon": {
+          "type": "number",
+          "description": "Domain center longitude in degrees east.",
+          "minimum": -180,
+          "maximum": 180
+        },
+        "dx_km": {
+          "type": "number",
+          "description": "Grid spacing in the west–east direction (km).",
+          "exclusiveMinimum": 0
+        },
+        "dy_km": {
+          "type": "number",
+          "description": "Grid spacing in the south–north direction (km).",
+          "exclusiveMinimum": 0
+        },
+        "e_we": {
+          "type": "integer",
+          "description": "Number of grid points in the west–east direction.",
+          "minimum": 3
+        },
+        "e_sn": {
+          "type": "integer",
+          "description": "Number of grid points in the south–north direction.",
+          "minimum": 3
+        }
       }
     },
     "inputs": {
       "type": "object",
+      "description": "Input data specification.",
       "required": ["source"],
       "additionalProperties": false,
       "properties": {
-        "source": {"type": "string", "enum": ["era5", "none"]},
+        "source": {
+          "type": "string",
+          "description": "Input data source.  Use 'era5' for real-data runs, 'none' for idealized runs.",
+          "enum": ["era5", "none"]
+        },
         "era5": {
           "type": "object",
+          "description": "ERA5-specific input options.",
           "additionalProperties": false,
           "properties": {
-            "config": {"type": "string", "minLength": 1, "examples": ["ci/era5/era5-offline-test-config.json"]}
+            "config": {
+              "type": "string",
+              "description": "Path to the ERA5 download request config JSON file.  Required for era5-download-only and era5-wrf modes.",
+              "minLength": 1,
+              "examples": ["ci/era5/era5-offline-test-config.json"]
+            }
           }
         }
       }
     },
     "outputs": {
       "type": "object",
+      "description": "Output location.",
       "required": ["directory"],
       "additionalProperties": false,
       "properties": {
-        "directory": {"type": "string", "minLength": 1, "examples": ["workbench-runs/xaver-dry-run"]}
+        "directory": {
+          "type": "string",
+          "description": "Run directory path.  Relative paths are anchored at the repository root.",
+          "minLength": 1,
+          "examples": ["workbench-runs/xaver-dry-run"]
+        }
       }
     }
   }
