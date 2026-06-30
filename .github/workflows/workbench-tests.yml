@@ -36,3 +36,6 @@ jobs:
 
       - name: Run ERA5 WRF pipeline tests
         run: sh ci/test-era5-wrf-pipeline.sh
+
+      - name: Run Xaver end-to-end demo tests
+        run: sh ci/test-xaver-demo.sh
