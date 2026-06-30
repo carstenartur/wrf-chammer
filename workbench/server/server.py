@@ -253,8 +253,12 @@ class WorkbenchApiHandler(BaseHTTPRequestHandler):
         if sanitized_errors:
             self._send_json(HTTPStatus.UNPROCESSABLE_ENTITY, {"ok": False, "valid": False, "errors": sanitized_errors})
             return
-        config_path = run_dir / "api-config.json"
-        config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", prefix="config-", suffix=".json", dir=str(run_dir), delete=False) as config_file:
+            json.dump(config, config_file, indent=2)
+            config_file.write("\n")
+            config_path = Path(config_file.name).resolve()
+        if not self._is_path_under(config_path, run_dir):
+            raise ApiError(HTTPStatus.INTERNAL_SERVER_ERROR, "bad_config_path", "Server-created config file is outside the API run directory")
         self._write_run_metadata(run_dir, job_id, "created")
         self._write_index_record(job_id, run_dir.name, "created")
         if not bool(payload.get("start", True)):
