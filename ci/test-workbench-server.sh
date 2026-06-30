@@ -34,7 +34,6 @@ cd "${REPO_ROOT}"
 python3 -m workbench.server.server \
     --host 127.0.0.1 \
     --port "${PORT}" \
-    --repo-root "${REPO_ROOT}" \
     >"${SERVER_LOG}" 2>&1 &
 SERVER_PID=$!
 
