@@ -4,6 +4,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
+      - 'workbench/ui/**'
       - 'workbench/web/**'
       - 'workbench/server/**'
       - 'workbench/e2e/**'
