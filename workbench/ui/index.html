@@ -6,7 +6,13 @@
     <title>WRF Workbench</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <h1>Event to simulation</h1>
+      <input id="event-query" aria-label="Event query" />
+      <button id="preview-job" type="button">Preview job config</button>
+      <button id="run-job" type="button">Start dry-run</button>
+      <div id="domain-preview"></div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

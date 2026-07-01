@@ -25,6 +25,7 @@ const ERROR_MESSAGES = {
   run: 'Failed to run dry-run job.',
   refresh: 'Failed to refresh job status.',
 };
+const LEGACY_DOMAIN_PREVIEW_HOOK = 'renderDomainPreview';
 
 function eventPeriod(event: WorkbenchEvent): string {
   if (event.period?.start && event.period?.end) {
@@ -55,6 +56,17 @@ function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+function renderDomainPreview(selectedDomain: DomainPreset | null): { width: number; height: number; label: string } {
+  const cellCount = Math.max(1, Number(selectedDomain?.e_we || 1) * Number(selectedDomain?.e_sn || 1));
+  const scale = Math.min(1, Math.sqrt(cellCount / 12000));
+  const width = selectedDomain ? Math.max(90, 80 + 200 * scale) : 200;
+  const height = selectedDomain ? Math.max(55, 50 + 110 * scale) : 100;
+  const label = selectedDomain
+    ? `${selectedDomain.id}: ${selectedDomain.e_we} × ${selectedDomain.e_sn} @ ${selectedDomain.dx_km} km`
+    : 'No domain selected';
+  return { width, height, label };
+}
+
 function SelectPresets(props: {
   detail: EventDetailResponse | null;
   domain: string;
@@ -66,13 +78,7 @@ function SelectPresets(props: {
 }) {
   const event = props.detail?.event;
   const selectedDomain = props.detail?.domain_presets.find((domain) => domain.id === props.domain) || null;
-  const cellCount = Math.max(1, Number(selectedDomain?.e_we || 1) * Number(selectedDomain?.e_sn || 1));
-  const scale = Math.min(1, Math.sqrt(cellCount / 12000));
-  const width = selectedDomain ? Math.max(90, 80 + 200 * scale) : 200;
-  const height = selectedDomain ? Math.max(55, 50 + 110 * scale) : 100;
-  const label = selectedDomain
-    ? `${selectedDomain.id}: ${selectedDomain.e_we} × ${selectedDomain.e_sn} @ ${selectedDomain.dx_km} km`
-    : 'No domain selected';
+  const { width, height, label } = renderDomainPreview(selectedDomain);
 
   return React.createElement(
     'section',
@@ -120,7 +126,7 @@ function SelectPresets(props: {
     ),
     React.createElement(
       'div',
-      { className: 'domain-preview', 'aria-label': 'Domain preview' },
+      { className: 'domain-preview', 'aria-label': 'Domain preview', 'data-render-hook': LEGACY_DOMAIN_PREVIEW_HOOK },
       React.createElement(
         'svg',
         { viewBox: '0 0 360 190', role: 'img', 'aria-labelledby': 'domain-preview-title domain-preview-desc' },
