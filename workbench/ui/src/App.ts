@@ -18,6 +18,14 @@ import type {
   WorkbenchEvent,
 } from './shared/api/types';
 
+const ERROR_MESSAGES = {
+  search: 'Failed to search events.',
+  eventDetail: 'Failed to load event details.',
+  preview: 'Failed to generate preview.',
+  run: 'Failed to run dry-run job.',
+  refresh: 'Failed to refresh job status.',
+};
+
 function eventPeriod(event: WorkbenchEvent): string {
   if (event.period?.start && event.period?.end) {
     return `${event.period.start} → ${event.period.end}`;
@@ -38,6 +46,13 @@ function preferredPresetId(event: WorkbenchEvent | undefined, items: Array<{ id:
 
 function buildJobId(eventId: string | null): string {
   return `${eventId || 'event'}-ui-dry-run`;
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return fallback;
 }
 
 function SelectPresets(props: {
@@ -199,51 +214,76 @@ export function App() {
   const canPreview = useMemo(() => Boolean(selectedEvent && domain && resolution), [selectedEvent, domain, resolution]);
 
   async function runSearch(searchQuery = query) {
-    const payload = await searchEvents(searchQuery.trim() || 'xaver');
-    setEvents(payload.events || []);
+    try {
+      const payload = await searchEvents(searchQuery.trim() || 'xaver');
+      setEvents(payload.events || []);
+    } catch (error) {
+      setMessage(errorMessage(error, ERROR_MESSAGES.search));
+      setMessageKind('bad');
+    }
   }
 
   async function selectEvent(eventId: string) {
-    setMessage('');
-    setMessageKind('');
-    const payload = await getEvent(eventId);
-    setSelectedEvent(payload.event.id);
-    setDetail(payload);
-    setDomain(preferredPresetId(payload.event, payload.domain_presets, 'default_domain'));
-    setResolution(preferredPresetId(payload.event, payload.resolution_presets, 'default_resolution_preset'));
-    setPreview(null);
-    setJob(null);
-    setLogs([]);
+    try {
+      setMessage('');
+      setMessageKind('');
+      const payload = await getEvent(eventId);
+      setSelectedEvent(payload.event.id);
+      setDetail(payload);
+      setDomain(preferredPresetId(payload.event, payload.domain_presets, 'default_domain'));
+      setResolution(preferredPresetId(payload.event, payload.resolution_presets, 'default_resolution_preset'));
+      setPreview(null);
+      setJob(null);
+      setLogs([]);
+    } catch (error) {
+      setMessage(errorMessage(error, ERROR_MESSAGES.eventDetail));
+      setMessageKind('bad');
+    }
   }
 
   async function onPreview() {
     if (!selectedEvent) return;
-    setMessage('Generating preview…');
-    setMessageKind('warn');
-    const payload = await previewJob({ event: selectedEvent, domain, resolution, mode, job_id: buildJobId(selectedEvent) });
-    setPreview(payload);
-    setMessage(payload.valid ? 'Preview is valid and ready to run.' : `Preview has validation errors: ${payload.errors.join('; ')}`);
-    setMessageKind(payload.valid ? 'good' : 'bad');
+    try {
+      setMessage('Generating preview…');
+      setMessageKind('warn');
+      const payload = await previewJob({ event: selectedEvent, domain, resolution, mode, job_id: buildJobId(selectedEvent) });
+      setPreview(payload);
+      setMessage(payload.valid ? 'Preview is valid and ready to run.' : `Preview has validation errors: ${payload.errors.join('; ')}`);
+      setMessageKind(payload.valid ? 'good' : 'bad');
+    } catch (error) {
+      setMessage(errorMessage(error, ERROR_MESSAGES.preview));
+      setMessageKind('bad');
+    }
   }
 
   async function onRun() {
     if (!preview?.config) return;
-    setMessage('Starting dry-run…');
-    setMessageKind('warn');
-    const payload = await startJob(preview.config);
-    setJob(payload.job);
-    const logPayload = await getLogs(payload.job.job_id);
-    setLogs(logPayload.logs || []);
-    setMessage('Dry-run finished. Status and logs are available below.');
-    setMessageKind(payload.ok ? 'good' : 'bad');
+    try {
+      setMessage('Starting dry-run…');
+      setMessageKind('warn');
+      const payload = await startJob(preview.config);
+      setJob(payload.job);
+      const logPayload = await getLogs(payload.job.job_id);
+      setLogs(logPayload.logs || []);
+      setMessage('Dry-run finished. Status and logs are available below.');
+      setMessageKind(payload.ok ? 'good' : 'bad');
+    } catch (error) {
+      setMessage(errorMessage(error, ERROR_MESSAGES.run));
+      setMessageKind('bad');
+    }
   }
 
   async function onRefresh() {
     if (!job?.job_id) return;
-    const payload = await getJob(job.job_id);
-    setJob(payload.job);
-    const logPayload = await getLogs(job.job_id);
-    setLogs(logPayload.logs || []);
+    try {
+      const payload = await getJob(job.job_id);
+      setJob(payload.job);
+      const logPayload = await getLogs(job.job_id);
+      setLogs(logPayload.logs || []);
+    } catch (error) {
+      setMessage(errorMessage(error, ERROR_MESSAGES.refresh));
+      setMessageKind('bad');
+    }
   }
 
   useEffect(() => {
@@ -259,7 +299,7 @@ export function App() {
         setMessageKind('bad');
       });
     runSearch('Xaver').catch((error) => {
-      setMessage(error.message);
+      setMessage(errorMessage(error, ERROR_MESSAGES.search));
       setMessageKind('bad');
     });
   }, []);
