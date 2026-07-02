@@ -1,7 +1,7 @@
 # WRF Workbench User Guide
 
 This guide walks through the local Workbench UI using screenshots generated from
-the real Storm Xaver browser flow.
+the real Storm Xaver browser flow and the WRF visualization viewer.
 
 Generate or refresh the screenshots with:
 
@@ -9,8 +9,8 @@ Generate or refresh the screenshots with:
 sh ci/generate-user-guide-screenshots.sh
 ```
 
-The same script runs in CI and uploads the generated images as an artifact.  The
-screenshots are written to:
+The same script runs in CI, regenerates the checked-in images and also uploads
+review artifacts. The screenshots are stored in:
 
 ```text
 doc/user-guide/screenshots/
@@ -109,9 +109,21 @@ starting containers or downloading data.
 
 ![Xaver dry-run logs](user-guide/screenshots/xaver-06-logs.png)
 
-## 7. Run the cached ERA5-WRF acceptance path
+## 7. Inspect computed weather-map results
 
-The browser UI currently drives the dry-run path.  The cacheable ERA5-WRF path is
+The Workbench visualization pipeline converts model output into web-friendly
+raster layers. The user-guide screenshot test generates a deterministic Xaver
+visualization dataset and opens the WRF Weather Viewer with the
+`Maximum 10 m wind speed` layer selected.
+
+This is the first result-oriented view: it is no longer only a job log, but a
+weather-map-style visualization based on generated WRF-shaped layer data.
+
+![Xaver weather map result](user-guide/screenshots/xaver-07-weather-map.png)
+
+## 8. Run the cached ERA5-WRF acceptance path
+
+The browser UI currently drives the dry-run path. The cacheable ERA5-WRF path is
 covered by the Xaver acceptance script:
 
 ```bash
@@ -130,11 +142,11 @@ doc/ERA5_WRF_PIPELINE.md
 
 ## Updating screenshots
 
-When the UI changes intentionally:
+When the UI or visualization changes intentionally:
 
 1. Run `sh ci/generate-user-guide-screenshots.sh` locally.
 2. Review the PNG files in `doc/user-guide/screenshots/`.
 3. Commit the updated screenshots together with the UI/user-guide change.
 
-CI also uploads generated screenshots as an artifact so reviewers can compare the
-current browser output before deciding whether to commit updated images.
+CI also uploads generated screenshots as artifacts so reviewers can compare the
+current browser output before merging changed images.
