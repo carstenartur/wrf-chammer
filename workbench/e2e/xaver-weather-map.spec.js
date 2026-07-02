@@ -5,9 +5,15 @@ const { execFileSync, spawn } = require('node:child_process');
 const { test, expect } = require('@playwright/test');
 
 const repoRoot = path.resolve(__dirname, '../..');
-const outputDir = path.join(repoRoot, 'workbench-runs', 'user-guide-weather-map');
+const outputDir = path.join(repoRoot, 'workbench-runs', 'user-guide-weather-map-hires');
+const fixturePath = path.join(outputDir, 'xaver-hires-fixture.json');
 const screenshotDir = path.join(repoRoot, 'doc', 'user-guide', 'screenshots');
 const port = 8091;
+
+test.use({
+  viewport: { width: 1920, height: 1200 },
+  deviceScaleFactor: 2,
+});
 
 function waitForServer(url, timeoutMs = 20000) {
   const start = Date.now();
@@ -28,11 +34,27 @@ function waitForServer(url, timeoutMs = 20000) {
   });
 }
 
-test('capture computed WRF weather map result', async ({ page }) => {
+test('capture computed WRF weather map result @docs @hires', async ({ page }) => {
   fs.rmSync(outputDir, { recursive: true, force: true });
+  fs.mkdirSync(outputDir, { recursive: true });
   fs.mkdirSync(screenshotDir, { recursive: true });
 
-  execFileSync('sh', ['visualization/postprocess/run-demo.sh', outputDir], {
+  execFileSync('python3', [
+    'visualization/examples/generate-hires-fixture.py',
+    '--output', fixturePath,
+    '--nx', '260',
+    '--ny', '180',
+    '--nt', '8',
+  ], {
+    cwd: repoRoot,
+    stdio: 'inherit',
+  });
+
+  execFileSync('python3', [
+    'visualization/postprocess/postprocess.py',
+    '--fixture', fixturePath,
+    '--output', outputDir,
+  ], {
     cwd: repoRoot,
     stdio: 'inherit',
   });
@@ -49,7 +71,7 @@ test('capture computed WRF weather map result', async ({ page }) => {
     await waitForServer(`http://127.0.0.1:${port}/`);
     await page.goto(`http://127.0.0.1:${port}/`);
     await expect(page.getByText('WRF Weather Viewer')).toBeVisible();
-    await expect(page.locator('#job-id-label')).toContainText('Job:');
+    await expect(page.locator('#job-id-label')).toContainText('Job: xaver-hires-doc-map');
     await expect(page.locator('#main-canvas')).toBeVisible();
     await expect(page.locator('#overlay')).toHaveClass(/hidden/, { timeout: 20000 });
 
@@ -57,6 +79,7 @@ test('capture computed WRF weather map result', async ({ page }) => {
     await maxWindLayer.click();
     await expect(maxWindLayer).toHaveClass(/active/);
     await expect(page.locator('#sb-layer')).toContainText('Maximum 10 m wind speed');
+    await expect(page.locator('#sb-grid')).toContainText('260 × 180');
 
     await page.screenshot({
       path: path.join(screenshotDir, 'xaver-07-weather-map.png'),
