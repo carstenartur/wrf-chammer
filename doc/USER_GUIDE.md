@@ -112,12 +112,14 @@ starting containers or downloading data.
 ## 7. Inspect computed weather-map results
 
 The Workbench visualization pipeline converts model output into web-friendly
-raster layers. The user-guide screenshot test generates a deterministic Xaver
-visualization dataset and opens the WRF Weather Viewer with the
-`Maximum 10 m wind speed` layer selected.
+raster layers. The user-guide screenshot test generates a deterministic
+high-resolution Xaver visualization dataset and opens the WRF Weather Viewer
+with the `Maximum 10 m wind speed` layer selected.
 
-This is the first result-oriented view: it is no longer only a job log, but a
-weather-map-style visualization based on generated WRF-shaped layer data.
+The documentation map uses a generated 260 × 180 grid and a large browser
+viewport so fronts, wind bands and pressure-related structures remain visible in
+the checked-in screenshot. The lighter smoke screenshot test stays separate from
+this documentation-quality map generation.
 
 ![Xaver weather map result](user-guide/screenshots/xaver-07-weather-map.png)
 
