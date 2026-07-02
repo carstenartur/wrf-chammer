@@ -12,6 +12,18 @@ on:
       - 'doc/USER_GUIDE.md'
       - 'doc/user-guide/**'
       - '.github/workflows/user-guide-screenshots.yml'
+  push:
+    branches-ignore:
+      - master
+    paths:
+      - 'workbench/ui/**'
+      - 'workbench/web/**'
+      - 'workbench/server/**'
+      - 'workbench/e2e/**'
+      - 'ci/generate-user-guide-screenshots.sh'
+      - 'doc/USER_GUIDE.md'
+      - 'doc/user-guide/**'
+      - '.github/workflows/user-guide-screenshots.yml'
   workflow_dispatch:
 
 permissions:
@@ -19,9 +31,12 @@ permissions:
 
 jobs:
   xaver-user-guide-screenshots:
+    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[generated-screenshots]') }}
     name: Generate Xaver user-guide screenshots
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
@@ -34,8 +49,11 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Generate screenshots
-        run: sh ci/generate-user-guide-screenshots.sh
+      - name: Run screenshot integration test in Testcontainers
+        run: |
+          cd workbench/e2e
+          npm install
+          npm run screenshots:container
 
       - name: Upload screenshots
         uses: actions/upload-artifact@v4
@@ -43,3 +61,66 @@ jobs:
           name: xaver-user-guide-screenshots
           path: doc/user-guide/screenshots/*.png
           if-no-files-found: error
+
+      - name: Upload generated UI assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-ui-assets
+          path: |
+            workbench/web/index.html
+            workbench/web/app.js
+            workbench/web/styles.css
+          if-no-files-found: warn
+
+      - name: Verify checked-in screenshots exist
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          count=$(find doc/user-guide/screenshots -name 'xaver-*.png' -maxdepth 1 | wc -l)
+          if [ "$count" -eq 0 ]; then
+            echo "No committed user-guide screenshots found in doc/user-guide/screenshots/."
+            exit 1
+          fi
+          echo "Found $count committed screenshot(s) in doc/user-guide/screenshots/."
+
+  commit-screenshots:
+    name: Commit generated screenshots and built UI
+    needs: xaver-user-guide-screenshots
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download screenshots
+        uses: actions/download-artifact@v4
+        with:
+          name: xaver-user-guide-screenshots
+          path: .
+
+      - name: Download generated UI assets
+        uses: actions/download-artifact@v4
+        with:
+          name: generated-ui-assets
+          path: .
+        continue-on-error: true
+
+      - name: Commit generated screenshots and built UI
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add doc/user-guide/screenshots/*.png
+          if [ -f workbench/web/index.html ]; then
+            git add workbench/web/index.html workbench/web/app.js workbench/web/styles.css
+          fi
+          if git diff --cached --quiet; then
+            echo "No generated screenshots or built UI changes to commit."
+            exit 0
+          fi
+          git commit -m "Update generated user guide screenshots [generated-screenshots]"
+          git push

@@ -5,9 +5,11 @@
   "description": "Browser tests and user-guide screenshot generation for the WRF Workbench.",
   "scripts": {
     "test": "playwright test",
-    "screenshots": "playwright test xaver-user-guide.spec.js --project=chromium"
+    "screenshots": "playwright test xaver-user-guide.spec.js --project=chromium",
+    "screenshots:container": "node run-testcontainers-screenshots.js"
   },
   "devDependencies": {
-    "@playwright/test": "^1.53.0"
+    "@playwright/test": "1.53.0",
+    "testcontainers": "^10.16.0"
   }
 }
