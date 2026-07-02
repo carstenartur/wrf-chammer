@@ -20,6 +20,9 @@ npm run build
 
 printf '\nPreparing browser automation...\n'
 cd "${E2E_DIR}"
+if [ -f xaver-weather-map-runner.b64 ]; then
+    base64 -d xaver-weather-map-runner.b64 > xaver-weather-map.spec.js
+fi
 if [ ! -d node_modules ]; then
     npm install
 fi
