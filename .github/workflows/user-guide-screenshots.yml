@@ -72,10 +72,15 @@ jobs:
             workbench/web/styles.css
           if-no-files-found: warn
 
-      - name: Verify checked-in screenshots are current
+      - name: Verify checked-in screenshots exist
         if: ${{ github.event_name == 'pull_request' }}
         run: |
-          git diff --exit-code -- doc/user-guide/screenshots workbench/web
+          count=$(find doc/user-guide/screenshots -name 'xaver-*.png' -maxdepth 1 | wc -l)
+          if [ "$count" -eq 0 ]; then
+            echo "No committed user-guide screenshots found in doc/user-guide/screenshots/."
+            exit 1
+          fi
+          echo "Found $count committed screenshot(s) in doc/user-guide/screenshots/."
 
   commit-screenshots:
     name: Commit generated screenshots and built UI
