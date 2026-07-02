@@ -24,10 +24,14 @@ if [ ! -d node_modules ]; then
     npm install
 fi
 
-if [ "${CI:-}" = "true" ]; then
-    npx playwright install --with-deps chromium
+if [ "${WORKBENCH_SKIP_PLAYWRIGHT_INSTALL:-}" != "1" ]; then
+    if [ "${CI:-}" = "true" ]; then
+        npx playwright install --with-deps chromium
+    else
+        npx playwright install chromium
+    fi
 else
-    npx playwright install chromium
+    printf 'Skipping Playwright browser install; container image already provides browsers.\n'
 fi
 
 npm run screenshots
