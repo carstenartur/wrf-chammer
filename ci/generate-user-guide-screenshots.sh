@@ -20,8 +20,9 @@ npm run build
 
 printf '\nPreparing browser automation...\n'
 cd "${E2E_DIR}"
-if [ -f xaver-weather-map-runner.b64 ]; then
-    base64 -d xaver-weather-map-runner.b64 > xaver-weather-map.spec.js
+if [ ! -f xaver-weather-map.spec.js ]; then
+    printf 'Missing required Playwright spec: %s\n' "${E2E_DIR}/xaver-weather-map.spec.js" >&2
+    exit 1
 fi
 if [ ! -d node_modules ]; then
     npm install
