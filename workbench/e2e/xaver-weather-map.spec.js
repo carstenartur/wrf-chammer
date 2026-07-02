@@ -63,6 +63,9 @@ test('capture computed WRF weather map result', async ({ page }) => {
       fullPage: true,
     });
   } finally {
+    if (!server.pid) {
+      return;
+    }
     try {
       process.kill(-server.pid, 'SIGTERM');
     } catch (error) {
