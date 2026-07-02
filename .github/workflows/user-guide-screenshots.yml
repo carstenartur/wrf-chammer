@@ -109,7 +109,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: xaver-user-guide-screenshots
-          path: .
+          path: doc/user-guide/screenshots
 
       - name: Download generated UI assets
         uses: actions/download-artifact@v4
