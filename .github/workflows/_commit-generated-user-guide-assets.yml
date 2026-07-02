@@ -1,0 +1,44 @@
+name: Commit Generated User Guide Assets
+
+on:
+  push:
+    branches:
+      - fix/commit-user-guide-screenshots
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  commit-assets:
+    if: ${{ !contains(github.event.head_commit.message, '[generated-assets-committed]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          ref: fix/commit-user-guide-screenshots
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Generate built UI and screenshots
+        run: sh ci/generate-user-guide-screenshots.sh
+
+      - name: Commit generated assets
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add workbench/web/index.html workbench/web/app.js workbench/web/styles.css doc/user-guide/screenshots/*.png
+          if git diff --cached --quiet; then
+            echo "No generated asset changes to commit."
+            exit 0
+          fi
+          git commit -m "Commit generated user guide assets [generated-assets-committed]"
+          git push origin HEAD:fix/commit-user-guide-screenshots
