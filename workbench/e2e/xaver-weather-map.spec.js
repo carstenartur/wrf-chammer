@@ -63,7 +63,7 @@ test('capture computed WRF weather map result', async ({ page }) => {
       fullPage: true,
     });
   } finally {
-    if (!server.pid) {
+    if (!Number.isInteger(server.pid) || server.pid <= 0) {
       return;
     }
     try {
