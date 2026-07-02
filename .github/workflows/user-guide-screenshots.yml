@@ -27,7 +27,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   xaver-user-guide-screenshots:
@@ -35,13 +35,14 @@ jobs:
     name: Generate Xaver user-guide screenshots
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -61,20 +62,60 @@ jobs:
           path: doc/user-guide/screenshots/*.png
           if-no-files-found: error
 
+      - name: Upload generated UI assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-ui-assets
+          path: |
+            workbench/web/index.html
+            workbench/web/app.js
+            workbench/web/styles.css
+          if-no-files-found: warn
+
+      - name: Verify checked-in screenshots are current
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          git diff --exit-code -- doc/user-guide/screenshots workbench/web
+
+  commit-screenshots:
+    name: Commit generated screenshots and built UI
+    needs: xaver-user-guide-screenshots
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download screenshots
+        uses: actions/download-artifact@v4
+        with:
+          name: xaver-user-guide-screenshots
+          path: .
+
+      - name: Download generated UI assets
+        uses: actions/download-artifact@v4
+        with:
+          name: generated-ui-assets
+          path: .
+        continue-on-error: true
+
       - name: Commit generated screenshots and built UI
-        if: ${{ github.event_name != 'pull_request' }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add doc/user-guide/screenshots/*.png workbench/web/index.html workbench/web/app.js workbench/web/styles.css
+          git add doc/user-guide/screenshots/*.png
+          if [ -f workbench/web/index.html ]; then
+            git add workbench/web/index.html workbench/web/app.js workbench/web/styles.css
+          fi
           if git diff --cached --quiet; then
             echo "No generated screenshots or built UI changes to commit."
             exit 0
           fi
           git commit -m "Update generated user guide screenshots [generated-screenshots]"
           git push
-
-      - name: Verify checked-in screenshots are current
-        if: ${{ github.event_name == 'pull_request' }}
-        run: |
-          git diff --exit-code -- doc/user-guide/screenshots workbench/web

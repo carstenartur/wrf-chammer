@@ -9,7 +9,7 @@
     "screenshots:container": "node run-testcontainers-screenshots.js"
   },
   "devDependencies": {
-    "@playwright/test": "^1.53.0",
+    "@playwright/test": "1.53.0",
     "testcontainers": "^10.16.0"
   }
 }
