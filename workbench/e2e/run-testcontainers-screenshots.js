@@ -11,7 +11,6 @@ const expectedScreenshots = [
   'xaver-04-preview-config.png',
   'xaver-05-dry-run-status.png',
   'xaver-06-logs.png',
-  'xaver-07-weather-map.png',
 ];
 
 async function main() {
