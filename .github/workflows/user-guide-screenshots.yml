@@ -81,8 +81,7 @@ jobs:
             xaver-03-domain-resolution.png \
             xaver-04-preview-config.png \
             xaver-05-dry-run-status.png \
-            xaver-06-logs.png \
-            xaver-07-weather-map.png
+            xaver-06-logs.png
           do
             if [ ! -f "doc/user-guide/screenshots/${file}" ]; then
               echo "Missing committed screenshot: ${file}"
