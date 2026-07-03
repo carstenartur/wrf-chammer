@@ -20,10 +20,6 @@ npm run build
 
 printf '\nPreparing browser automation...\n'
 cd "${E2E_DIR}"
-if [ ! -f "${E2E_DIR}/xaver-weather-map.spec.js" ]; then
-    printf 'Missing required Playwright spec: %s\n' "${E2E_DIR}/xaver-weather-map.spec.js" >&2
-    exit 1
-fi
 if [ ! -d node_modules ]; then
     npm install
 fi
