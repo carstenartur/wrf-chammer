@@ -1,0 +1,66 @@
+name: Real Data Weather Map Screenshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      real_visualization_dir:
+        description: 'Path to real WRF visualization artifacts on the runner, containing metadata.json and layers/'
+        required: true
+        type: string
+      layer_id:
+        description: 'Layer id to capture from the real visualization metadata'
+        required: false
+        default: 'max_wind10m'
+        type: string
+      commit_result:
+        description: 'Commit doc/user-guide/screenshots/xaver-07-weather-map.png back to the branch'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  real-data-weather-map:
+    name: Capture real-data weather map
+    runs-on: self-hosted
+    timeout-minutes: 240
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Capture weather map from real artifacts
+        run: |
+          sh ci/generate-real-data-weather-map-screenshot.sh \
+            "${{ inputs.real_visualization_dir }}" \
+            "${{ inputs.layer_id }}"
+
+      - name: Upload real-data weather-map screenshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-data-weather-map-screenshot
+          path: doc/user-guide/screenshots/xaver-07-weather-map.png
+          if-no-files-found: error
+
+      - name: Commit real-data weather-map screenshot
+        if: ${{ inputs.commit_result }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add doc/user-guide/screenshots/xaver-07-weather-map.png
+          if git diff --cached --quiet; then
+            echo "No weather-map screenshot changes to commit."
+            exit 0
+          fi
+          git commit -m "Update real-data weather-map screenshot"
+          git push

@@ -1,16 +1,16 @@
 # WRF Workbench User Guide
 
 This guide walks through the local Workbench UI using screenshots generated from
-the real Storm Xaver browser flow.
+the Storm Xaver browser flow.
 
-Generate or refresh the screenshots with:
+Generate or refresh the regular UI screenshots with:
 
 ```bash
 sh ci/generate-user-guide-screenshots.sh
 ```
 
-The same script runs in CI and uploads the generated images as an artifact.  The
-screenshots are written to:
+The same script runs in CI, regenerates the checked-in UI images and also uploads
+review artifacts. The screenshots are stored in:
 
 ```text
 doc/user-guide/screenshots/
@@ -37,7 +37,7 @@ panel and status/log panel.
 
 ## 2. Search and select Storm Xaver
 
-The UI starts with `Xaver` as a useful demo query.  Click `Select xaver` to load
+The UI starts with `Xaver` as a useful demo query. Click `Select xaver` to load
 its event details from the Workbench event catalogue.
 
 The browser does not parse event files directly; it calls:
@@ -51,7 +51,7 @@ GET /api/events/xaver
 
 ## 3. Choose domain and resolution presets
 
-Select a domain and a resolution preset.  The first UI version shows an
+Select a domain and a resolution preset. The first UI version shows an
 approximate rectangular domain preview so users can see that the selected event
 has a concrete simulation area.
 
@@ -76,7 +76,7 @@ POST /api/jobs/preview
 ```
 
 The server delegates event lookup and job config generation to Workbench core
-logic.  The browser only renders the returned config and validation status.
+logic. The browser only renders the returned config and validation status.
 
 ![Xaver generated config](user-guide/screenshots/xaver-04-preview-config.png)
 
@@ -91,7 +91,7 @@ POST /api/jobs
 ```
 
 The local server executes the Workbench runner in a server-managed run
-directory.  When the run completes, the status panel shows the job id, status,
+directory. When the run completes, the status panel shows the job id, status,
 run directory, logs and output count.
 
 ![Xaver dry-run status](user-guide/screenshots/xaver-05-dry-run-status.png)
@@ -109,9 +109,34 @@ starting containers or downloading data.
 
 ![Xaver dry-run logs](user-guide/screenshots/xaver-06-logs.png)
 
-## 7. Run the cached ERA5-WRF acceptance path
+## 7. Inspect real computed weather-map results
 
-The browser UI currently drives the dry-run path.  The cacheable ERA5-WRF path is
+Weather-map documentation screenshots must be generated from real WRF
+visualization artifacts. The guide does not use artificial fields as stand-ins
+for result maps.
+
+After a real run has produced visualization artifacts containing `metadata.json`
+and `layers/`, capture the weather-map screenshot with:
+
+```bash
+sh ci/generate-real-data-weather-map-screenshot.sh \
+  workbench-runs/xaver-real/visualizations \
+  max_wind10m
+```
+
+This creates:
+
+```text
+doc/user-guide/screenshots/xaver-07-weather-map.png
+```
+
+Commit that PNG only if it was generated from real visualization artifacts. If no
+real-data screenshot is committed yet, this guide intentionally omits the weather
+map image.
+
+## 8. Run the cached ERA5-WRF acceptance path
+
+The browser UI currently drives the dry-run path. The cacheable ERA5-WRF path is
 covered by the Xaver acceptance script:
 
 ```bash
@@ -134,7 +159,11 @@ When the UI changes intentionally:
 
 1. Run `sh ci/generate-user-guide-screenshots.sh` locally.
 2. Review the PNG files in `doc/user-guide/screenshots/`.
-3. Commit the updated screenshots together with the UI/user-guide change.
+3. Commit the updated UI screenshots together with the UI/user-guide change.
 
-CI also uploads generated screenshots as an artifact so reviewers can compare the
-current browser output before deciding whether to commit updated images.
+When a real-data visualization changes intentionally, run the separate real-data
+weather-map screenshot script and commit `xaver-07-weather-map.png` only if it
+comes from real visualization artifacts.
+
+CI also uploads generated regular UI screenshots as artifacts so reviewers can
+compare the current browser output before merging changed images.

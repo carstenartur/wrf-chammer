@@ -75,12 +75,19 @@ jobs:
       - name: Verify checked-in screenshots exist
         if: ${{ github.event_name == 'pull_request' }}
         run: |
-          count=$(find doc/user-guide/screenshots -name 'xaver-*.png' -maxdepth 1 | wc -l)
-          if [ "$count" -eq 0 ]; then
-            echo "No committed user-guide screenshots found in doc/user-guide/screenshots/."
-            exit 1
-          fi
-          echo "Found $count committed screenshot(s) in doc/user-guide/screenshots/."
+          for file in \
+            xaver-01-search.png \
+            xaver-02-event-selected.png \
+            xaver-03-domain-resolution.png \
+            xaver-04-preview-config.png \
+            xaver-05-dry-run-status.png \
+            xaver-06-logs.png
+          do
+            if [ ! -f "doc/user-guide/screenshots/${file}" ]; then
+              echo "Missing committed screenshot: ${file}"
+              exit 1
+            fi
+          done
 
   commit-screenshots:
     name: Commit generated screenshots and built UI
@@ -101,7 +108,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: xaver-user-guide-screenshots
-          path: .
+          path: doc/user-guide/screenshots
 
       - name: Download generated UI assets
         uses: actions/download-artifact@v4
