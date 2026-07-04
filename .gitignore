@@ -37,22 +37,15 @@ wrfout_d*
 rsl.out.*
 rsl.error.*
 *.log
-FILE:*
-PFILE:*
-geo_em.d*.nc
-met_em.d*
-!tests/era5-mini/wps/geo_em.d01.nc
 
-# ERA5/WPS pipeline work directories
+# Test generated files
+__pycache__/
+*.pkl
+
+# WRF Chammer fork runtime roots kept here because they are created at repo root.
 .era5-cache/
 .wps-work/
-
-# Workbench run outputs
 workbench-runs/
 
-# JavaScript test dependencies
-node_modules/
-
-# Python cache
-__pycache__/
-*.py[cod]
+# Keep the committed mini WPS fixture trackable despite the global NetCDF rule.
+!tests/era5-mini/wps/geo_em.d01.nc
