@@ -1,0 +1,46 @@
+name: WRF Chammer ShellCheck
+
+on:
+  push:
+    branches: [ master, develop ]
+    paths:
+      - 'ci/*.sh'
+      - 'workbench/run.sh'
+      - 'workbench/scripts/*.sh'
+      - 'visualization/tests/test_visualization.sh'
+      - 'visualization/postprocess/*.sh'
+      - '.github/workflows/wrf-chammer-shellcheck.yml'
+  pull_request:
+    types: [ opened, synchronize, reopened ]
+    paths:
+      - 'ci/*.sh'
+      - 'workbench/run.sh'
+      - 'workbench/scripts/*.sh'
+      - 'visualization/tests/test_visualization.sh'
+      - 'visualization/postprocess/*.sh'
+      - '.github/workflows/wrf-chammer-shellcheck.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    name: Shell script validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Run ShellCheck on fork CI scripts
+        run: |
+          shellcheck --severity=error \
+            ci/*.sh \
+            workbench/run.sh \
+            workbench/scripts/*.sh \
+            visualization/tests/test_visualization.sh \
+            visualization/postprocess/*.sh
