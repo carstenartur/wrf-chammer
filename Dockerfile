@@ -24,8 +24,11 @@ WORKDIR /src/wrf
 COPY . .
 
 RUN git submodule update --init --recursive \
-    && ./ci/build-wrf.sh \
-    && ./configure_new -p GNU -x -d _build_smoke -i /opt/wrf-smoke -- -DWRF_CASE=EM_QUARTER_SS \
+    && NETCDFF_LIBRARY="$(./ci/find-netcdff-library.sh)" \
+    && NETCDFF_LIBRARY="${NETCDFF_LIBRARY}" ./ci/build-wrf.sh \
+    && ./configure_new -p GNU -x -d _build_smoke -i /opt/wrf-smoke -- \
+        -DWRF_CASE=EM_QUARTER_SS \
+        "-DnetCDF-Fortran_LIBRARY=${NETCDFF_LIBRARY}" \
     && ./compile_new _build_smoke -j"$(nproc)"
 
 FROM ubuntu:${UBUNTU_VERSION}
