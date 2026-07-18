@@ -1,7 +1,10 @@
 #!/bin/sh
 set -eu
 
-./configure_new -p GNU -x -d _build -i /opt/wrf
+NETCDFF_LIBRARY=${NETCDFF_LIBRARY:-$(./ci/find-netcdff-library.sh)}
+
+./configure_new -p GNU -x -d _build -i /opt/wrf -- \
+    "-DnetCDF-Fortran_LIBRARY=${NETCDFF_LIBRARY}"
 ./compile_new _build -j"$(nproc)"
 
 if [ ! -x /opt/wrf/run/real.exe ]; then
