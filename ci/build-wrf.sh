@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-NETCDFF_LIBRARY=${NETCDFF_LIBRARY:-$(./ci/find-netcdff-library.sh)}
+NETCDFF_LIBRARY=${NETCDFF_LIBRARY:-$(sh ./ci/find-netcdff-library.sh)}
 
 ./configure_new -p GNU -x -d _build -i /opt/wrf -- \
     "-DnetCDF-Fortran_LIBRARY=${NETCDFF_LIBRARY}"
