@@ -1,8 +1,8 @@
 #!/bin/sh
 # ci/test-workbench-server.sh — local Workbench API smoke tests.
 #
-# Requires only Python 3 stdlib.  Does not require Docker, CDS credentials or
-# NCAR/HPC infrastructure.
+# Requires only Python 3 stdlib. Does not require CDS credentials or
+# NCAR/HPC infrastructure. Readiness reports unavailable optional runtimes.
 
 set -eu
 
@@ -31,7 +31,7 @@ PY
 SERVER_LOG="${TMP}/server.log"
 
 cd "${REPO_ROOT}"
-python3 -m workbench.server.server \
+python3 -m workbench.server.application \
     --host 127.0.0.1 \
     --port "${PORT}" \
     >"${SERVER_LOG}" 2>&1 &
@@ -53,7 +53,7 @@ for _ in range(50):
         with urlopen(url, timeout=1) as response:
             payload = json.loads(response.read().decode("utf-8"))
             if payload.get("ok"):
-                print("Workbench API server is healthy")
+                print("Workbench application is healthy")
                 raise SystemExit(0)
     except Exception:
         time.sleep(0.1)
@@ -94,6 +94,15 @@ def request(method, path, body=None, expected_status=200):
     if status != expected_status:
         raise AssertionError(f"{method} {path}: expected HTTP {expected_status}, got {status}: {payload}")
     return payload
+
+readiness = request("GET", "/api/readiness")
+assert readiness["status"] in {"ready", "warning", "error"}
+assert isinstance(readiness["checks"], list)
+assert {"python", "cpu", "memory", "disk", "workspace", "docker", "era5-credentials"}.issubset(
+    {check["id"] for check in readiness["checks"]}
+)
+assert all(check["status"] in {"ready", "warning", "error"} for check in readiness["checks"])
+assert all(check.get("summary") for check in readiness["checks"])
 
 # Events are served through the core catalogue module.
 events = request("GET", "/api/events?q=xaver")
@@ -169,5 +178,5 @@ cancel = request("POST", "/api/jobs/api-ci-dry-run/cancel", {}, expected_status=
 assert cancel["ok"] is False
 assert cancel["error"]["code"] == "cancel_not_implemented"
 
-print("Workbench API smoke tests passed")
+print("Workbench application API smoke tests passed")
 PY
