@@ -24,7 +24,7 @@ module.exports = defineConfig({
     },
   ],
   webServer: {
-    command: 'python3 -m workbench.server.server --host 127.0.0.1 --port 8080',
+    command: 'python3 -m workbench.server.application --host 127.0.0.1 --port 8080',
     cwd: repoRoot,
     url: 'http://127.0.0.1:8080/api/health',
     reuseExistingServer: !process.env.CI,
