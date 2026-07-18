@@ -21,7 +21,14 @@ jobs:
           submodules: recursive
 
       - name: Build Docker image
-        run: docker build --tag wrf-reproducible .
+        shell: bash
+        run: |
+          if ! docker build --progress=plain --tag wrf-reproducible . > /tmp/docker-build.log 2>&1; then
+            echo "Docker build failed. Last 200 log lines:"
+            tail -n 200 /tmp/docker-build.log
+            exit 1
+          fi
+          tail -n 40 /tmp/docker-build.log
 
       - name: Verify runtime dependencies and startup
         run: docker run --rm wrf-reproducible /usr/local/bin/verify-wrf-runtime.sh
@@ -32,10 +39,10 @@ jobs:
       - name: Run WRF smoke test via Workbench
         run: sh workbench/run.sh workbench/examples/wrf-smoke.json 2>&1 | tee /tmp/smoke-test-workbench.log
 
-      - name: Upload smoke test logs on failure
+      - name: Upload diagnostic logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: smoke-test-logs
-          path: /tmp/smoke-test-*.log
+          name: docker-build-and-smoke-test-logs
+          path: /tmp/*build*.log
           if-no-files-found: ignore
