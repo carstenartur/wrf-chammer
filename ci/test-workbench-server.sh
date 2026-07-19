@@ -95,6 +95,7 @@ def request(method, path, body=None, expected_status=200):
         raise AssertionError(f"{method} {path}: expected HTTP {expected_status}, got {status}: {payload}")
     return payload
 
+
 readiness = request("GET", "/api/readiness")
 assert readiness["status"] in {"ready", "warning", "error"}
 assert isinstance(readiness["checks"], list)
@@ -103,6 +104,51 @@ assert {"python", "cpu", "memory", "disk", "workspace", "docker", "era5-credenti
 )
 assert all(check["status"] in {"ready", "warning", "error"} for check in readiness["checks"])
 assert all(check.get("summary") for check in readiness["checks"])
+
+profiles = request("GET", "/api/domain/profiles")
+assert profiles["ok"] is True
+assert {"quick-preview", "balanced", "detailed"}.issubset({profile["id"] for profile in profiles["profiles"]})
+
+planning = {
+    "bounds": {"west": 2.0, "south": 51.0, "east": 14.0, "north": 58.0},
+    "period": {"start": "2013-12-05T12:00:00Z", "end": "2013-12-06T06:00:00Z"},
+    "quality_profile": "balanced",
+}
+plan = request("POST", "/api/domain/plan", planning)
+assert plan["ok"] is True
+assert plan["domain"]["dx_km"] == 9.0
+assert plan["domain"]["e_we"] > 80
+assert plan["domain"]["e_sn"] > 80
+assert (plan["domain"]["e_we"] - 1) % 6 == 0
+assert (plan["domain"]["e_sn"] - 1) % 6 == 0
+assert plan["resources"]["estimated_ram_gb"]["recommended"] >= plan["resources"]["estimated_ram_gb"]["minimum"]
+assert plan["resources"]["estimated_storage_gb"]["working_total"] > 0
+
+invalid_plan = request(
+    "POST",
+    "/api/domain/plan",
+    {**planning, "bounds": {"west": 14, "south": 51, "east": 2, "north": 58}},
+    expected_status=422,
+)
+assert invalid_plan["ok"] is False
+assert invalid_plan["errors"]
+
+wizard = request(
+    "POST",
+    "/api/wizard/preview",
+    {
+        "event": "xaver",
+        "job_id": "xaver-map-ci-dry-run",
+        "planning": planning,
+    },
+)
+assert wizard["ok"] is True
+assert wizard["valid"] is True
+assert wizard["config"]["id"] == "xaver-map-ci-dry-run"
+assert wizard["config"]["domain"]["label"] == "custom-map-domain"
+assert wizard["config"]["domain"]["e_we"] == wizard["plan"]["domain"]["e_we"]
+assert wizard["config"]["metadata"]["domain_source"] == "map-bounds"
+assert wizard["config"]["metadata"]["domain_bounds"]["west"] == 2.0
 
 # Events are served through the core catalogue module.
 events = request("GET", "/api/events?q=xaver")
