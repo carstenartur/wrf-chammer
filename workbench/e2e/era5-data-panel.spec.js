@@ -4,6 +4,16 @@ const { test, expect } = require('@playwright/test');
 
 const repoRoot = path.resolve(__dirname, '../..');
 const screenshotDir = path.join(repoRoot, 'doc', 'user-guide', 'screenshots');
+const transparentPng = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+  'base64',
+);
+
+test.beforeEach(async ({ page }) => {
+  await page.route(/^https:\/\/[abc]\.tile\.openstreetmap\.org\//, async (route) => {
+    await route.fulfill({ status: 200, contentType: 'image/png', body: transparentPng });
+  });
+});
 
 test('plan and prepare real ERA5 data from the guided map plan', async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
