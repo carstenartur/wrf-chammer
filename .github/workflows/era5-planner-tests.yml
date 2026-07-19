@@ -6,6 +6,7 @@ on:
     paths:
       - 'workbench/era5_planner.py'
       - 'ci/test_era5_planner.py'
+      - 'ci/test_era5_downloader_security.py'
       - 'ci/download-era5.py'
       - 'doc/ERA5_DATA_PLANNING.md'
       - '.github/workflows/era5-planner-tests.yml'
@@ -14,6 +15,7 @@ on:
     paths:
       - 'workbench/era5_planner.py'
       - 'ci/test_era5_planner.py'
+      - 'ci/test_era5_downloader_security.py'
       - 'ci/download-era5.py'
       - 'doc/ERA5_DATA_PLANNING.md'
       - '.github/workflows/era5-planner-tests.yml'
@@ -37,3 +39,6 @@ jobs:
 
       - name: Run ERA5 planner tests
         run: python3 ci/test_era5_planner.py
+
+      - name: Run ERA5 downloader security tests
+        run: python3 ci/test_era5_downloader_security.py
