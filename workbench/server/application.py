@@ -12,6 +12,11 @@ from urllib.parse import urlparse
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from workbench.domain_planner import (  # noqa: E402
+    DomainPlanningError,
+    available_profiles,
+    plan_domain,
+)
 from workbench.readiness import collect_readiness  # noqa: E402
 from workbench.server.server import ApiError, WorkbenchApiHandler, WorkbenchApiServer  # noqa: E402
 
@@ -19,16 +24,39 @@ from workbench.server.server import ApiError, WorkbenchApiHandler, WorkbenchApiS
 class WorkbenchApplicationHandler(WorkbenchApiHandler):
     def do_GET(self) -> None:  # noqa: N802
         path = urlparse(self.path).path.rstrip("/") or "/"
-        if path != "/api/readiness":
+        if path not in {"/api/readiness", "/api/domain/profiles"}:
             super().do_GET()
             return
         try:
             self._require_local_client()
-            self._send_json(HTTPStatus.OK, collect_readiness(self.server.repo_root))
+            if path == "/api/readiness":
+                self._send_json(HTTPStatus.OK, collect_readiness(self.server.repo_root))
+            else:
+                self._send_json(HTTPStatus.OK, {"ok": True, "profiles": available_profiles()})
         except ApiError as exc:
             self._send_error(exc.status, exc.code, exc.message, exc.details)
         except Exception as exc:  # pragma: no cover
-            self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "readiness_error", str(exc))
+            self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "application_error", str(exc))
+
+    def do_POST(self) -> None:  # noqa: N802
+        path = urlparse(self.path).path.rstrip("/") or "/"
+        if path != "/api/domain/plan":
+            super().do_POST()
+            return
+        try:
+            self._require_local_client()
+            request = self._read_json()
+            plan = plan_domain(request)
+            self._send_json(HTTPStatus.OK, plan)
+        except DomainPlanningError as exc:
+            self._send_json(
+                HTTPStatus.UNPROCESSABLE_ENTITY,
+                {"ok": False, "valid": False, "errors": exc.errors},
+            )
+        except ApiError as exc:
+            self._send_error(exc.status, exc.code, exc.message, exc.details)
+        except Exception as exc:  # pragma: no cover
+            self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "domain_planning_error", str(exc))
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
