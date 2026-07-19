@@ -87,16 +87,32 @@ test('draw a new simulation rectangle directly on the map', async ({ page }) => 
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   const map = page.locator('#wizard-map');
   await expect(map).toBeVisible();
-  const box = await map.boundingBox();
-  if (!box) throw new Error('Map bounding box is unavailable');
 
   await page.getByRole('button', { name: 'Draw simulation area' }).click();
   await expect(page.getByText(/Drag from one corner/)).toBeVisible();
 
-  await page.mouse.move(box.x + box.width * 0.25, box.y + box.height * 0.25);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width * 0.75, box.y + box.height * 0.75, { steps: 8 });
-  await page.mouse.up();
+  await map.evaluate((element) => {
+    const rectangle = element.getBoundingClientRect();
+    const pointerId = 41;
+    const dispatch = (type, xRatio, yRatio, buttons) => {
+      element.dispatchEvent(new PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        pointerId,
+        pointerType: 'mouse',
+        isPrimary: true,
+        button: type === 'pointerdown' ? 0 : -1,
+        buttons,
+        clientX: rectangle.left + rectangle.width * xRatio,
+        clientY: rectangle.top + rectangle.height * yRatio,
+      }));
+    };
+    dispatch('pointerdown', 0.25, 0.25, 1);
+    dispatch('pointermove', 0.50, 0.50, 1);
+    dispatch('pointermove', 0.75, 0.75, 1);
+    dispatch('pointerup', 0.75, 0.75, 0);
+  });
 
   await expect(page.getByRole('button', { name: 'Draw simulation area' })).toBeVisible();
   await expect(page.locator('#wizard-west')).not.toHaveValue('2');
