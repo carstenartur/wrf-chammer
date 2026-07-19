@@ -12,31 +12,20 @@ on:
       - 'doc/USER_GUIDE.md'
       - 'doc/user-guide/**'
       - '.github/workflows/user-guide-screenshots.yml'
-  push:
-    branches-ignore:
-      - master
-    paths:
-      - 'workbench/ui/**'
-      - 'workbench/web/**'
-      - 'workbench/server/**'
-      - 'workbench/e2e/**'
-      - 'ci/generate-user-guide-screenshots.sh'
-      - 'doc/USER_GUIDE.md'
-      - 'doc/user-guide/**'
-      - '.github/workflows/user-guide-screenshots.yml'
   workflow_dispatch:
+
+concurrency:
+  group: user-guide-screenshots-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
   xaver-user-guide-screenshots:
-    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[generated-screenshots]') }}
     name: Generate Xaver user-guide screenshots
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    permissions:
-      contents: read
 
     steps:
       - name: Checkout
@@ -51,9 +40,27 @@ jobs:
 
       - name: Run screenshot integration test in Testcontainers
         run: |
-          cd workbench/e2e
-          npm install
-          npm run screenshots:container
+          LOG_FILE="${RUNNER_TEMP}/user-guide-screenshots.log"
+          if ! (
+            cd workbench/e2e
+            npm install
+            npm run screenshots:container
+          ) >"${LOG_FILE}" 2>&1
+          then
+            echo "Screenshot integration failed. Last 250 log lines:"
+            tail -n 250 "${LOG_FILE}"
+            exit 1
+          fi
+          echo "Screenshot integration succeeded. Last 60 log lines:"
+          tail -n 60 "${LOG_FILE}"
+
+      - name: Upload screenshot integration diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: user-guide-screenshot-diagnostics
+          path: ${{ runner.temp }}/user-guide-screenshots.log
+          if-no-files-found: warn
 
       - name: Upload screenshots
         uses: actions/upload-artifact@v4
@@ -73,12 +80,12 @@ jobs:
           if-no-files-found: warn
 
       - name: Verify checked-in screenshots exist
-        if: ${{ github.event_name == 'pull_request' }}
         run: |
           for file in \
             xaver-01-search.png \
             xaver-02-event-selected.png \
             xaver-03-domain-resolution.png \
+            xaver-03b-map-domain-wizard.png \
             xaver-04-preview-config.png \
             xaver-05-dry-run-status.png \
             xaver-06-logs.png
@@ -88,46 +95,3 @@ jobs:
               exit 1
             fi
           done
-
-  commit-screenshots:
-    name: Commit generated screenshots and built UI
-    needs: xaver-user-guide-screenshots
-    if: ${{ github.event_name != 'pull_request' }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Download screenshots
-        uses: actions/download-artifact@v4
-        with:
-          name: xaver-user-guide-screenshots
-          path: doc/user-guide/screenshots
-
-      - name: Download generated UI assets
-        uses: actions/download-artifact@v4
-        with:
-          name: generated-ui-assets
-          path: .
-        continue-on-error: true
-
-      - name: Commit generated screenshots and built UI
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add doc/user-guide/screenshots/*.png
-          if [ -f workbench/web/index.html ]; then
-            git add workbench/web/index.html workbench/web/app.js workbench/web/styles.css
-          fi
-          if git diff --cached --quiet; then
-            echo "No generated screenshots or built UI changes to commit."
-            exit 0
-          fi
-          git commit -m "Update generated user guide screenshots [generated-screenshots]"
-          git push

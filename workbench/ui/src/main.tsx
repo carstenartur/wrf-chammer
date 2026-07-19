@@ -1,6 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { SimulationWizard } from './features/simulation/SimulationWizard';
 import { SystemReadiness } from './features/system/SystemReadiness';
 import './styles.css';
 
@@ -15,6 +16,7 @@ createRoot(root).render(
     React.Fragment,
     null,
     React.createElement(SystemReadiness),
+    React.createElement(SimulationWizard),
     React.createElement(App),
   ),
 );

@@ -28,7 +28,7 @@ PY
 SERVER_LOG="${TMP}/server.log"
 
 cd "${REPO_ROOT}"
-python3 -m workbench.server.server \
+python3 -m workbench.server.application \
     --host 127.0.0.1 \
     --port "${PORT}" \
     >"${SERVER_LOG}" 2>&1 &
@@ -50,7 +50,7 @@ for _ in range(50):
         with urlopen(url, timeout=1) as response:
             payload = json.loads(response.read().decode("utf-8"))
             if payload.get("ok"):
-                print("Workbench API server is healthy")
+                print("Workbench application is healthy")
                 raise SystemExit(0)
     except Exception:
         time.sleep(0.1)
@@ -94,11 +94,21 @@ def request(method, path, body=None, expected_status=200):
         raise AssertionError(f"{method} {path}: expected HTTP {expected_status}, got {status}: {payload}")
     return payload
 
+
 status, content_type, html = get_text("/")
 assert status == 200
 assert "text/html" in content_type
-for expected in ("Event to simulation", "event-query", "preview-job", "domain-preview", "/web/app.js"):
+for expected in (
+    "Event to simulation",
+    "event-query",
+    "preview-job",
+    "domain-preview",
+    "/web/app.js",
+    "/web/styles.css",
+):
     assert expected in html, expected
+assert "domain-wizard.js" not in html
+assert "domain-wizard.css" not in html
 
 status, content_type, js = get_text("/web/app.js")
 assert status == 200
@@ -117,6 +127,25 @@ assert xaver["ok"] is True
 assert xaver["event"]["id"] == "xaver"
 assert xaver["domain_presets"]
 assert xaver["resolution_presets"]
+
+wizard = request(
+    "POST",
+    "/api/wizard/preview",
+    {
+        "event": "xaver",
+        "job_id": "web-map-ci-dry-run",
+        "planning": {
+            "bounds": {"west": 2, "south": 51, "east": 14, "north": 58},
+            "period": {"start": "2013-12-05T12:00:00Z", "end": "2013-12-06T06:00:00Z"},
+            "quality_profile": "balanced",
+        },
+    },
+)
+assert wizard["ok"] is True
+assert wizard["valid"] is True
+assert wizard["config"]["id"] == "web-map-ci-dry-run"
+assert wizard["plan"]["domain"]["e_we"] > 80
+assert wizard["plan"]["resources"]["estimated_ram_gb"]["recommended"] > 0
 
 preview = request(
     "POST",

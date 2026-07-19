@@ -9,8 +9,9 @@ Generate or refresh the regular UI screenshots with:
 sh ci/generate-user-guide-screenshots.sh
 ```
 
-The same script runs in CI, regenerates the checked-in UI images and also uploads
-review artifacts. The screenshots are stored in:
+The same script runs in CI and uploads review artifacts. Intentionally changed
+screenshots must be reviewed and committed together with the corresponding UI
+change. The screenshots are stored in:
 
 ```text
 doc/user-guide/screenshots/
@@ -21,7 +22,8 @@ doc/user-guide/screenshots/
 From the repository root:
 
 ```bash
-python3 -m workbench.server.server --host 127.0.0.1 --port 8080
+python3 wrf-chammer doctor
+python3 wrf-chammer start
 ```
 
 Open:
@@ -30,8 +32,8 @@ Open:
 http://127.0.0.1:8080/
 ```
 
-The start screen shows the event search, preset selection panel, job preview
-panel and status/log panel.
+The start screen shows system readiness, event search, preset selection, guided
+map planning, job preview and status/log panels.
 
 ![Xaver search screen](user-guide/screenshots/xaver-01-search.png)
 
@@ -49,13 +51,55 @@ GET /api/events/xaver
 
 ![Xaver event selected](user-guide/screenshots/xaver-02-event-selected.png)
 
-## 3. Choose domain and resolution presets
+## 3. Choose the simulation domain
 
-Select a domain and a resolution preset. The first UI version shows an
-approximate rectangular domain preview so users can see that the selected event
-has a concrete simulation area.
+There are two supported planning paths.
 
-For the Xaver demo, the screenshot flow uses:
+### 3.1 Guided map planning
+
+The **Guided simulation planning** section uses a real OpenStreetMap basemap for
+geographic context. It does not create or alter weather data.
+
+Click **Draw simulation area**, then drag a rectangle from one corner of the desired
+domain to the opposite corner. The map selection updates west, south, east and
+north. The coordinate fields remain available as a keyboard-accessible alternative
+and update the rectangle in the opposite direction.
+
+For the Xaver reference plan, the defaults are:
+
+```text
+Bounds:     2.0–14.0° E, 51.0–58.0° N
+Period:     2013-12-05 12:00 UTC to 2013-12-06 06:00 UTC
+Profile:    balanced regional
+Resolution: 9 km
+```
+
+Click `Plan domain and preview job`. The browser sends the geographic bounds and
+quality profile to the server:
+
+```http
+POST /api/wizard/preview
+```
+
+The server derives the domain centre, physical extent, `e_we`, `e_sn`, time-step
+recommendation and transparent estimates for runtime, RAM, ERA5 input and WRF
+output. The result includes a validated Workbench job configuration; users do not
+need to edit JSON or namelists.
+
+![Guided Xaver map-domain plan with grid and resource estimates](user-guide/screenshots/xaver-03b-map-domain-wizard.png)
+
+Expert controls can override grid spacing, vertical levels and output interval.
+All overrides are validated server-side.
+
+For technical details and assumptions, see
+[`SIMULATION_WIZARD.md`](SIMULATION_WIZARD.md).
+
+### 3.2 Curated presets
+
+The existing preset path remains available. Select a domain and a resolution
+preset. It is useful for tested reference configurations and quick demonstrations.
+
+For the original Xaver screenshot flow:
 
 ```text
 Domain:     northern-germany-27km
@@ -67,9 +111,10 @@ Mode:       dry-run
 
 ## 4. Preview the generated job config
 
-Click `Preview job config`.
+Click `Preview job config` in the preset workflow, or use the generated preview
+in the guided map workflow.
 
-The UI calls:
+The preset UI calls:
 
 ```http
 POST /api/jobs/preview
@@ -82,7 +127,7 @@ logic. The browser only renders the returned config and validation status.
 
 ## 5. Start the dry-run
 
-Click `Start dry-run`.
+Click `Start dry-run` or `Start planned dry-run`.
 
 The UI calls:
 
@@ -136,7 +181,7 @@ map image.
 
 ## 8. Run the cached ERA5-WRF acceptance path
 
-The browser UI currently drives the dry-run path. The cacheable ERA5-WRF path is
+The browser UI currently drives dry-run execution. The cacheable ERA5-WRF path is
 covered by the Xaver acceptance script:
 
 ```bash
@@ -165,5 +210,5 @@ When a real-data visualization changes intentionally, run the separate real-data
 weather-map screenshot script and commit `xaver-07-weather-map.png` only if it
 comes from real visualization artifacts.
 
-CI also uploads generated regular UI screenshots as artifacts so reviewers can
-compare the current browser output before merging changed images.
+CI uploads generated regular UI screenshots as artifacts so reviewers can compare
+the browser output before merging. CI does not modify pull request branches.

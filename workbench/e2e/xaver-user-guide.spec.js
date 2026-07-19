@@ -4,6 +4,10 @@ const { test, expect } = require('@playwright/test');
 
 const repoRoot = path.resolve(__dirname, '../..');
 const screenshotDir = path.join(repoRoot, 'doc', 'user-guide', 'screenshots');
+const transparentPng = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+  'base64',
+);
 
 async function capture(page, fileName) {
   fs.mkdirSync(screenshotDir, { recursive: true });
@@ -13,8 +17,18 @@ async function capture(page, fileName) {
   });
 }
 
+test.beforeEach(async ({ page }) => {
+  await page.route(/^https:\/\/[abc]\.tile\.openstreetmap\.org\//, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'image/png',
+      body: transparentPng,
+    });
+  });
+});
+
 test('capture the Xaver user-guide UI flow', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('heading', { name: 'System readiness' })).toBeVisible();
   await expect(page.locator('.readiness-check').filter({ hasText: 'python' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Check again' })).toBeEnabled();
@@ -47,4 +61,69 @@ test('capture the Xaver user-guide UI flow', async ({ page }) => {
 
   await expect(page.locator('#job-logs')).toContainText('Dry run complete');
   await capture(page, 'xaver-06-logs.png');
+});
+
+test('plan a map-selected Xaver domain without editing JSON', async ({ page }) => {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+  await expect(page.getByRole('heading', { name: 'Draw a real map area and estimate the WRF job' })).toBeVisible();
+  await expect(page.locator('#wizard-map')).toBeVisible();
+  await expect(page.locator('#wizard-west')).toHaveValue('2');
+  await expect(page.locator('#wizard-north')).toHaveValue('58');
+
+  await page.getByRole('button', { name: 'Plan domain and preview job' }).click();
+  await expect(page.getByText('The map domain is valid and a job configuration was generated.')).toBeVisible();
+  await expect(page.locator('#wizard-result')).toContainText('91 × 91');
+  await expect(page.locator('#wizard-result')).toContainText('Recommended RAM');
+  await expect(page.locator('#wizard-config-preview')).toContainText('"domain_source": "map-bounds"');
+  await expect(page.locator('#wizard-config-preview')).toContainText('"quality_profile": "balanced"');
+  await capture(page, 'xaver-03b-map-domain-wizard.png');
+
+  await page.getByRole('button', { name: 'Start planned dry-run' }).click();
+  await expect(page.locator('#wizard-status')).toContainText('finished successfully', { timeout: 30_000 });
+});
+
+test('draw a new simulation rectangle directly on the map', async ({ page }) => {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  const map = page.locator('#wizard-map');
+  await expect(map).toBeVisible();
+
+  await page.getByRole('button', { name: 'Draw simulation area' }).click();
+  await expect(page.getByText(/Drag from one corner/)).toBeVisible();
+
+  await map.evaluate((element) => {
+    // Synthetic PointerEvents do not represent an active hardware pointer, so
+    // browsers reject setPointerCapture(). Stub capture only inside this test;
+    // production input continues to use the native implementation.
+    element.setPointerCapture = () => {};
+    element.releasePointerCapture = () => {};
+    element.hasPointerCapture = () => false;
+
+    const rectangle = element.getBoundingClientRect();
+    const pointerId = 41;
+    const dispatch = (type, xRatio, yRatio, buttons) => {
+      element.dispatchEvent(new PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        pointerId,
+        pointerType: 'mouse',
+        isPrimary: true,
+        button: type === 'pointerdown' ? 0 : -1,
+        buttons,
+        clientX: rectangle.left + rectangle.width * xRatio,
+        clientY: rectangle.top + rectangle.height * yRatio,
+      }));
+    };
+    dispatch('pointerdown', 0.25, 0.25, 1);
+    dispatch('pointermove', 0.50, 0.50, 1);
+    dispatch('pointermove', 0.75, 0.75, 1);
+    dispatch('pointerup', 0.75, 0.75, 0);
+  });
+
+  await expect(page.getByRole('button', { name: 'Draw simulation area' })).toBeVisible();
+  await expect(page.locator('#wizard-west')).not.toHaveValue('2');
+  await expect(page.locator('#wizard-east')).not.toHaveValue('14');
+  await page.getByRole('button', { name: 'Plan domain and preview job' }).click();
+  await expect(page.getByText('The map domain is valid and a job configuration was generated.')).toBeVisible();
 });
