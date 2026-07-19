@@ -77,6 +77,7 @@ test('plan a map-selected Xaver domain without editing JSON', async ({ page }) =
   await expect(page.locator('#wizard-result')).toContainText('Recommended RAM');
   await expect(page.locator('#wizard-config-preview')).toContainText('"domain_source": "map-bounds"');
   await expect(page.locator('#wizard-config-preview')).toContainText('"quality_profile": "balanced"');
+  await capture(page, 'xaver-03b-map-domain-wizard.png');
 
   await page.getByRole('button', { name: 'Start planned dry-run' }).click();
   await expect(page.locator('#wizard-status')).toContainText('finished successfully', { timeout: 30_000 });
