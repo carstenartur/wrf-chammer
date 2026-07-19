@@ -92,6 +92,13 @@ test('draw a new simulation rectangle directly on the map', async ({ page }) => 
   await expect(page.getByText(/Drag from one corner/)).toBeVisible();
 
   await map.evaluate((element) => {
+    // Synthetic PointerEvents do not represent an active hardware pointer, so
+    // browsers reject setPointerCapture(). Stub capture only inside this test;
+    // production input continues to use the native implementation.
+    element.setPointerCapture = () => {};
+    element.releasePointerCapture = () => {};
+    element.hasPointerCapture = () => false;
+
     const rectangle = element.getBoundingClientRect();
     const pointerId = 41;
     const dispatch = (type, xRatio, yRatio, buttons) => {
