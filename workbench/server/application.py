@@ -24,6 +24,14 @@ from workbench.server.server import ApiError, WorkbenchApiHandler, WorkbenchApiS
 class WorkbenchApplicationHandler(WorkbenchApiHandler):
     def do_GET(self) -> None:  # noqa: N802
         path = urlparse(self.path).path.rstrip("/") or "/"
+        if path == "/web/domain-wizard.js":
+            self._require_local_client()
+            self._send_static_file(self.server.web_dir / "domain-wizard.js", "application/javascript; charset=utf-8")
+            return
+        if path == "/web/domain-wizard.css":
+            self._require_local_client()
+            self._send_static_file(self.server.web_dir / "domain-wizard.css", "text/css; charset=utf-8")
+            return
         if path not in {"/api/readiness", "/api/domain/profiles"}:
             super().do_GET()
             return
