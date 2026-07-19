@@ -164,6 +164,7 @@ export function Era5DataPanel() {
       setMessageKind('success');
       await refreshStatus();
     } catch (error) {
+      setPrepared(null);
       setMessage(error instanceof Error ? error.message : 'Preparing ERA5 plan files failed.');
       setMessageKind('error');
     } finally {
@@ -172,16 +173,7 @@ export function Era5DataPanel() {
   }
 
   useEffect(() => {
-    const onWizardPreview = () => {
-      setPlan(null);
-      setPrepared(null);
-      setMessage('A new guided simulation preview is ready for ERA5 planning.');
-      setMessageKind('');
-      refreshStatus().catch(() => undefined);
-    };
     refreshStatus().catch(() => undefined);
-    window.addEventListener('wrf-chammer:wizard-preview', onWizardPreview);
-    return () => window.removeEventListener('wrf-chammer:wizard-preview', onWizardPreview);
   }, []);
 
   const credentialsKind = status?.credentials.configured ? 'ready' : 'warning';
