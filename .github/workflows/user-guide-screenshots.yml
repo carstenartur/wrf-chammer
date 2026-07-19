@@ -51,9 +51,27 @@ jobs:
 
       - name: Run screenshot integration test in Testcontainers
         run: |
-          cd workbench/e2e
-          npm install
-          npm run screenshots:container
+          LOG_FILE="${RUNNER_TEMP}/user-guide-screenshots.log"
+          if ! (
+            cd workbench/e2e
+            npm install
+            npm run screenshots:container
+          ) >"${LOG_FILE}" 2>&1
+          then
+            echo "Screenshot integration failed. Last 250 log lines:"
+            tail -n 250 "${LOG_FILE}"
+            exit 1
+          fi
+          echo "Screenshot integration succeeded. Last 60 log lines:"
+          tail -n 60 "${LOG_FILE}"
+
+      - name: Upload screenshot integration diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: user-guide-screenshot-diagnostics
+          path: ${{ runner.temp }}/user-guide-screenshots.log
+          if-no-files-found: warn
 
       - name: Upload screenshots
         uses: actions/upload-artifact@v4
