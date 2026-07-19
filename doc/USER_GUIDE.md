@@ -9,8 +9,9 @@ Generate or refresh the regular UI screenshots with:
 sh ci/generate-user-guide-screenshots.sh
 ```
 
-The same script runs in CI, regenerates the checked-in UI images and also uploads
-review artifacts. The screenshots are stored in:
+The same script runs in CI and uploads review artifacts. Intentionally changed
+screenshots must be reviewed and committed together with the corresponding UI
+change. The screenshots are stored in:
 
 ```text
 doc/user-guide/screenshots/
@@ -59,6 +60,11 @@ There are two supported planning paths.
 The **Guided simulation planning** section uses a real OpenStreetMap basemap for
 geographic context. It does not create or alter weather data.
 
+Click **Draw simulation area**, then drag a rectangle from one corner of the desired
+domain to the opposite corner. The map selection updates west, south, east and
+north. The coordinate fields remain available as a keyboard-accessible alternative
+and update the rectangle in the opposite direction.
+
 For the Xaver reference plan, the defaults are:
 
 ```text
@@ -79,6 +85,8 @@ The server derives the domain centre, physical extent, `e_we`, `e_sn`, time-step
 recommendation and transparent estimates for runtime, RAM, ERA5 input and WRF
 output. The result includes a validated Workbench job configuration; users do not
 need to edit JSON or namelists.
+
+![Guided Xaver map-domain plan with grid and resource estimates](user-guide/screenshots/xaver-03b-map-domain-wizard.png)
 
 Expert controls can override grid spacing, vertical levels and output interval.
 All overrides are validated server-side.
@@ -202,5 +210,5 @@ When a real-data visualization changes intentionally, run the separate real-data
 weather-map screenshot script and commit `xaver-07-weather-map.png` only if it
 comes from real visualization artifacts.
 
-CI also uploads generated regular UI screenshots as artifacts so reviewers can
-compare the current browser output before merging changed images.
+CI uploads generated regular UI screenshots as artifacts so reviewers can compare
+the browser output before merging. CI does not modify pull request branches.
