@@ -28,6 +28,9 @@ jobs:
       - name: Run Workbench tests
         run: sh ci/test-workbench.sh
 
+      - name: Run Workbench lifecycle CLI tests
+        run: python3 ci/test_workbench_cli.py
+
       - name: Run local Workbench API tests
         run: sh ci/test-workbench-server.sh
 

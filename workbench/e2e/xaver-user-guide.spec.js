@@ -15,6 +15,9 @@ async function capture(page, fileName) {
 
 test('capture the Xaver user-guide UI flow', async ({ page }) => {
   await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'System readiness' })).toBeVisible();
+  await expect(page.locator('.readiness-check').filter({ hasText: 'python' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Check again' })).toBeEnabled();
   await expect(page.getByText('Event to simulation')).toBeVisible();
   await expect(page.getByText('API online')).toBeVisible();
   await expect(page.getByRole('button', { name: /Select xaver/i })).toBeVisible();
