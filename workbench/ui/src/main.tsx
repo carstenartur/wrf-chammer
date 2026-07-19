@@ -1,6 +1,8 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { Era5DataPanel } from './features/data/Era5DataPanel';
+import { SimulationWizard } from './features/simulation/SimulationWizard';
 import { SystemReadiness } from './features/system/SystemReadiness';
 import './styles.css';
 
@@ -15,6 +17,8 @@ createRoot(root).render(
     React.Fragment,
     null,
     React.createElement(SystemReadiness),
+    React.createElement(SimulationWizard),
+    React.createElement(Era5DataPanel),
     React.createElement(App),
   ),
 );
