@@ -2,9 +2,47 @@ name: Docker WPS Reproducible Build
 
 on:
   pull_request:
+    paths-ignore:
+      - 'doc/**'
+      - '**/*.md'
+      - 'workbench/ui/**'
+      - 'workbench/web/**'
+      - 'workbench/e2e/**'
+      - 'workbench/server/**'
+      - 'workbench/domain_planner.py'
+      - 'workbench/readiness.py'
+      - 'workbench/cli.py'
+      - 'visualization/**'
+      - 'ci/test-workbench-server.sh'
+      - 'ci/test-workbench-web.sh'
+      - 'ci/test_domain_planner.py'
+      - '.github/workflows/user-guide-screenshots.yml'
+      - '.github/workflows/workbench-tests.yml'
+      - '.github/workflows/visualization-tests.yml'
   push:
     branches: [master, develop]
+    paths-ignore:
+      - 'doc/**'
+      - '**/*.md'
+      - 'workbench/ui/**'
+      - 'workbench/web/**'
+      - 'workbench/e2e/**'
+      - 'workbench/server/**'
+      - 'workbench/domain_planner.py'
+      - 'workbench/readiness.py'
+      - 'workbench/cli.py'
+      - 'visualization/**'
+      - 'ci/test-workbench-server.sh'
+      - 'ci/test-workbench-web.sh'
+      - 'ci/test_domain_planner.py'
+      - '.github/workflows/user-guide-screenshots.yml'
+      - '.github/workflows/workbench-tests.yml'
+      - '.github/workflows/visualization-tests.yml'
   workflow_dispatch:
+
+concurrency:
+  group: docker-wps-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
