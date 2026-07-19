@@ -1,9 +1,12 @@
 name: ERA5/WPS Integration Test
 
 # Proves that the full WPS pipeline (GRIB → ungrib → metgrid → met_em) works
-# using the bundled mini GRIB dataset.  No CDS credentials or internet access
+# using the bundled mini GRIB dataset. No CDS credentials or internet access
 # are required during the WPS run itself; only the Docker build stage needs
 # the network to clone upstream WPS from GitHub.
+#
+# Local equivalent:
+#   sh ci/test-era5-wps-integration.sh
 #
 # Runtime budget:
 #   First run  – up to 90 minutes (WRF + WPS compile from source).
@@ -11,9 +14,47 @@ name: ERA5/WPS Integration Test
 
 on:
   pull_request:
+    paths-ignore:
+      - 'doc/**'
+      - '**/*.md'
+      - 'workbench/ui/**'
+      - 'workbench/web/**'
+      - 'workbench/e2e/**'
+      - 'workbench/server/**'
+      - 'workbench/domain_planner.py'
+      - 'workbench/readiness.py'
+      - 'workbench/cli.py'
+      - 'visualization/**'
+      - 'ci/test-workbench-server.sh'
+      - 'ci/test-workbench-web.sh'
+      - 'ci/test_domain_planner.py'
+      - '.github/workflows/user-guide-screenshots.yml'
+      - '.github/workflows/workbench-tests.yml'
+      - '.github/workflows/visualization-tests.yml'
   push:
     branches: [master, develop]
+    paths-ignore:
+      - 'doc/**'
+      - '**/*.md'
+      - 'workbench/ui/**'
+      - 'workbench/web/**'
+      - 'workbench/e2e/**'
+      - 'workbench/server/**'
+      - 'workbench/domain_planner.py'
+      - 'workbench/readiness.py'
+      - 'workbench/cli.py'
+      - 'visualization/**'
+      - 'ci/test-workbench-server.sh'
+      - 'ci/test-workbench-web.sh'
+      - 'ci/test_domain_planner.py'
+      - '.github/workflows/user-guide-screenshots.yml'
+      - '.github/workflows/workbench-tests.yml'
+      - '.github/workflows/visualization-tests.yml'
   workflow_dispatch:
+
+concurrency:
+  group: era5-wps-integration-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -32,9 +73,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # ── Build wps-reproducible ──────────────────────────────────────────────
-      # Uses GHA Docker layer cache so subsequent runs skip the WRF + WPS
-      # compile and finish in a few minutes.
       - name: Build wps-reproducible
         uses: docker/build-push-action@v6
         with:
@@ -45,19 +83,6 @@ jobs:
           cache-from: type=gha,scope=wps-reproducible
           cache-to: type=gha,scope=wps-reproducible,mode=max
 
-      # ── Build era5-pipeline ─────────────────────────────────────────────────
-      # Adds ncdump, python3, and WPS tables (Vtable, METGRID.TBL, …) on top of
-      # the wps-reproducible runtime image.
-      #
-      # Uses plain `docker build` (not docker/build-push-action / buildx) because
-      # the buildx docker-container driver cannot access images from the local
-      # Docker daemon.  wps-reproducible:latest was loaded into the local daemon
-      # by the previous step (`load: true`), so the plain Docker CLI builder
-      # resolves the base image correctly without attempting a registry pull.
-      #
-      # era5-pipeline layer cache is intentionally omitted here: the Dockerfile
-      # only adds apt packages, a pip package, and static files on top of
-      # wps-reproducible, so this stage is fast even without a cache.
       - name: Build era5-pipeline
         run: |
           docker build \
@@ -66,16 +91,12 @@ jobs:
             -t era5-pipeline:latest \
             .
 
-      # ── Run the integration test ────────────────────────────────────────────
-      # The test script runs ungrib.exe and metgrid.exe inside the container
-      # with --network=none (no internet), then verifies the met_em output.
       - name: Run ERA5/WPS integration test
         env:
           ERA5_IMAGE: era5-pipeline:latest
           WORKDIR: /tmp/wps-integration-workdir
         run: sh ci/test-era5-wps-integration.sh
 
-      # ── Upload logs on failure ──────────────────────────────────────────────
       - name: Package WPS logs on failure
         if: failure()
         run: |
