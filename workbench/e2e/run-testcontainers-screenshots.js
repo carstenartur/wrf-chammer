@@ -8,6 +8,8 @@ const expectedScreenshots = [
   'xaver-01-search.png',
   'xaver-02-event-selected.png',
   'xaver-03-domain-resolution.png',
+  'xaver-03b-map-domain-wizard.png',
+  'xaver-03c-era5-data-plan.png',
   'xaver-04-preview-config.png',
   'xaver-05-dry-run-status.png',
   'xaver-06-logs.png',

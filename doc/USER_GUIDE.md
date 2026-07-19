@@ -32,8 +32,8 @@ Open:
 http://127.0.0.1:8080/
 ```
 
-The start screen shows system readiness, event search, preset selection, guided
-map planning, job preview and status/log panels.
+The start screen shows system readiness, guided map planning, ERA5 input-data
+planning, event search, preset selection, job preview and status/log panels.
 
 ![Xaver search screen](user-guide/screenshots/xaver-01-search.png)
 
@@ -51,9 +51,10 @@ GET /api/events/xaver
 
 ![Xaver event selected](user-guide/screenshots/xaver-02-event-selected.png)
 
-## 3. Choose the simulation domain
+## 3. Choose the simulation domain and real input data
 
-There are two supported planning paths.
+There are two supported domain-planning paths. The guided path additionally
+connects the validated area and period to a reproducible ERA5 request plan.
 
 ### 3.1 Guided map planning
 
@@ -94,7 +95,65 @@ All overrides are validated server-side.
 For technical details and assumptions, see
 [`SIMULATION_WIZARD.md`](SIMULATION_WIZARD.md).
 
-### 3.2 Curated presets
+### 3.2 Plan real ERA5 boundary data
+
+After the guided simulation preview is valid, open **Plan ERA5 boundary data** and
+select `Refresh data status`. The status cards show:
+
+- whether local Copernicus CDS credentials are configured;
+- whether the managed cache is writable;
+- how many content-addressed ERA5 plans already exist;
+- whether the latest guided simulation preview is available.
+
+Select `Plan real ERA5 data`. The browser requests a canonical data plan from the
+server:
+
+```http
+POST /api/data/era5/plan
+Content-Type: application/json
+
+{
+  "source": "latest-wizard-preview",
+  "interval_hours": 1,
+  "margin_degrees": 1
+}
+```
+
+For the reference Xaver period, the plan contains four real ERA5 requests:
+
+```text
+2013-12-05: pressure levels + single levels
+2013-12-06: pressure levels + single levels
+Boundary times: 19 hourly time points including both endpoints
+```
+
+The panel displays the request count, estimated download size, cache coverage,
+stable plan key and provenance. It also states explicitly:
+
+```text
+Artificial weather data: no
+```
+
+![Xaver ERA5 request plan with cache and provenance information](user-guide/screenshots/xaver-03c-era5-data-plan.png)
+
+Select `Prepare download files` to atomically write the reproducible plan and the
+existing downloader configuration format into the managed cache:
+
+```text
+.era5-cache/<plan-key>/era5-plan.json
+.era5-cache/<plan-key>/era5-download-config.json
+```
+
+This operation performs no CDS request. The UI and API return
+`download_started: false`. Network download, progress, cancellation and retry are
+separate asynchronous-worker functions and are not implied by planning or preparing
+these files.
+
+For the API, security and cache details, see
+[`ERA5_DATA_UI.md`](ERA5_DATA_UI.md) and
+[`ERA5_DATA_PLANNING.md`](ERA5_DATA_PLANNING.md).
+
+### 3.3 Curated presets
 
 The existing preset path remains available. Select a domain and a resolution
 preset. It is useful for tested reference configurations and quick demonstrations.
@@ -181,8 +240,8 @@ map image.
 
 ## 8. Run the cached ERA5-WRF acceptance path
 
-The browser UI currently drives dry-run execution. The cacheable ERA5-WRF path is
-covered by the Xaver acceptance script:
+The browser UI currently drives planning and dry-run execution. The cacheable
+ERA5-WRF path is covered by the Xaver acceptance script:
 
 ```bash
 sh ci/test-xaver-demo.sh
