@@ -1,169 +1,199 @@
 # CI Architecture
 
 This document describes the continuous integration and delivery pipelines for
-this fork of WRF.  The fork CI runs entirely on GitHub-hosted runners and does
-not require access to NCAR infrastructure.
+this fork of WRF. Fork CI runs on GitHub-hosted runners and does not require
+NCAR infrastructure unless a maintainer explicitly starts the optional HPC
+regression workflow.
+
+GitHub Actions is an invocation layer, not the test implementation. Build and
+integration logic remains in Dockerfiles and repository scripts so it can be
+run from any ordinary checkout.
 
 ---
 
-## Overview
+## Principles
 
-| Workflow | File | Trigger | Runner | Purpose |
-|---|---|---|---|---|
-| Fork CI | `ci.yml` | push / PR | `ubuntu-latest` | Shell script validation |
-| Docker Reproducible Build | `docker-build.yml` | push / PR | `ubuntu-latest` | WRF Docker image + smoke test |
-| Docker WPS Reproducible Build | `docker-wps-build.yml` | push / PR | `ubuntu-latest` | WPS Docker image |
-| ERA5 Offline Dry Run | `era5-offline-dry-run.yml` | push / PR | `ubuntu-latest` | ERA5 script validation (no credentials) |
-| ERA5/WPS Integration Test | `wps-integration-test.yml` | push / PR | `ubuntu-latest` | End-to-end WPS pipeline test |
-| Workbench MVP Tests | `workbench-tests.yml` | push / PR | `ubuntu-latest` | Workbench script tests |
-| Visualization MVP Tests | `visualization-tests.yml` | push / PR | `ubuntu-latest` | Visualization script tests |
-| ERA5 Download Pipeline | `docker-era5-pipeline.yml` | manual only | `ubuntu-latest` | Live ERA5 download (requires `CDSAPI_KEY`) |
-| HPC Regression Tests | `hpc-regression.yml` | manual / label | self-hosted (NCAR) | Upstream compilation regression suite |
+1. **Local first** — every automated test has a documented repository command.
+2. **Change-aware** — expensive WRF/WPS compilations run only when relevant
+   runtime, model, build, integration fixture, or invocation files change.
+3. **Fast feedback first** — Workbench, visualization, shell, and offline tests
+   report independently from long model compilations.
+4. **No obsolete heavy work** — each expensive workflow has a per-ref
+   concurrency group with `cancel-in-progress: true`.
+5. **Real-data tests are explicit** — credentialed or long-running real-data
+   workflows remain manual or separately scheduled.
 
 ---
 
-## Default fork CI (runs on every push and pull request)
+## Workflow overview
 
-The following workflows run automatically on every push to `master`/`develop`
-and on every pull request opened, updated, or reopened.  They use only
-GitHub-hosted runners and do not require any secrets.
-
-### Fork CI (`ci.yml`)
-
-**Trigger**: push to `master`/`develop`; pull_request (opened, synchronize, reopened); workflow_dispatch
-
-**Jobs**:
-- `shellcheck` — Runs [ShellCheck](https://www.shellcheck.net/) with
-  `--severity=error` on all fork CI shell scripts under `ci/`, `workbench/`,
-  and `visualization/`.  Catches shell scripting errors before they reach
-  runtime.
-
-**Expected runtime**: < 1 minute
+| Workflow | File | Automatic scope | Local equivalent |
+|---|---|---|---|
+| WRF Chammer ShellCheck | `wrf-chammer-shellcheck.yml` | Relevant shell files | `shellcheck ...` as listed in the workflow |
+| Docker Reproducible Build | `docker-build.yml` | WRF/runtime-relevant changes | `docker build -t wrf-reproducible .` plus `ci/smoke-test-wrf.sh` |
+| Docker WPS Reproducible Build | `docker-wps-build.yml` | WRF/WPS/runtime-relevant changes | `docker build -f Dockerfile.wps -t wps-reproducible .` |
+| ERA5 Offline Dry Run | `era5-offline-dry-run.yml` | ERA5/Workbench changes | `sh ci/test-era5-offline.sh` |
+| ERA5/WPS Integration Test | `wps-integration-test.yml` | WRF/WPS/ERA5 integration changes | `sh ci/test-era5-wps-integration.sh` with the documented images |
+| Workbench MVP Tests | `workbench-tests.yml` | Workbench changes | Commands in the workflow, all under `ci/` |
+| Visualization MVP Tests | `visualization-tests.yml` | Visualization changes | `sh visualization/tests/test_visualization.sh` |
+| User Guide Screenshots | `user-guide-screenshots.yml` | UI/server/e2e/doc changes | `sh ci/generate-user-guide-screenshots.sh` |
+| ERA5 Download Pipeline | `docker-era5-pipeline.yml` | Manual only | `sh ci/run-era5-pipeline.sh` with CDS credentials |
+| HPC Regression Tests | `hpc-regression.yml` | Manual / maintainer label | NCAR-specific reusable workflow |
 
 ---
 
-### Docker Reproducible Build (`docker-build.yml`)
+## Fast automatic checks
 
-**Trigger**: push to `master`/`develop`; pull_request; workflow_dispatch
+Fast checks should normally complete before the heavy model builds and remain
+useful even when no Docker daemon or external credentials are available.
 
-**Jobs**:
-- Builds the `wrf-reproducible` Docker image from `Dockerfile`.
-- Verifies runtime dependencies inside the container.
-- Runs the WRF idealized quarter-circle mountain smoke test.
-- Runs the WRF smoke test via the Workbench runner.
+### WRF Chammer ShellCheck
 
-**Diagnostics**: Smoke test stdout/stderr is captured to `/tmp/smoke-test-*.log`
-and uploaded as a workflow artifact on failure.
+Validates fork-owned shell scripts. ShellCheck invocation remains visible in the
+workflow so the same command can be run locally.
 
-**Expected runtime**: up to 120 minutes on first run (compiles WRF from source);
-significantly faster with the Docker layer cache warm.
+### Workbench MVP Tests
 
----
+Runs catalogue, validation, lifecycle CLI, API, web UI, ERA5 pipeline, and Xaver
+demo tests through scripts under `ci/`. These are repository tests and do not
+depend on GitHub-specific APIs.
 
-### Docker WPS Reproducible Build (`docker-wps-build.yml`)
+### Visualization MVP Tests
 
-**Trigger**: push to `master`/`develop`; pull_request; workflow_dispatch
+Runs:
 
-**Jobs**:
-- Builds `wps-reproducible` from `Dockerfile.wps`.
-- Verifies WPS runtime dependencies inside the container.
+```bash
+sh visualization/tests/test_visualization.sh
+```
 
-**Expected runtime**: up to 180 minutes on first run (compiles WRF + WPS from
-source); significantly faster with Docker layer cache.
+### ERA5 Offline Dry Run
 
----
+Runs:
 
-### ERA5 Offline Dry Run (`era5-offline-dry-run.yml`)
+```bash
+sh ci/test-era5-offline.sh
+```
 
-**Trigger**: push to `master`/`develop`; pull_request; workflow_dispatch
+It validates configuration, manifests, and dummy-fixture rejection without CDS
+credentials or a live data download.
 
-**Jobs**:
-- Runs `ci/test-era5-offline.sh` which validates ERA5 configuration files,
-  manifest generation, and dummy-GRIB detection without network access or CDS
-  credentials.
+### User Guide Screenshots
 
-**Expected runtime**: < 10 minutes
-
----
-
-### ERA5/WPS Integration Test (`wps-integration-test.yml`)
-
-**Trigger**: push to `master`/`develop`; pull_request; workflow_dispatch
-
-**Jobs**:
-- Builds `wps-reproducible` (with Docker layer cache).
-- Builds `era5-pipeline` on top of `wps-reproducible`.
-- Runs `ci/test-era5-wps-integration.sh` which executes `ungrib.exe` and
-  `metgrid.exe` inside the container with `--network=none`, then verifies the
-  generated `met_em` output.
-
-**Diagnostics**: WPS working directory is tarred and uploaded as a workflow
-artifact on failure.
-
-**Expected runtime**: up to 120 minutes on first run; much faster with cache.
+Runs the browser flow in Testcontainers and uploads generated screenshots and UI
+assets for review. The workflow is read-only and does not modify pull-request
+branches.
 
 ---
 
-### Workbench MVP Tests (`workbench-tests.yml`)
+## Change-aware heavy checks
 
-**Trigger**: push to `master`/`develop`; pull_request; workflow_dispatch
+The following checks compile WRF or WPS and may take a substantial amount of
+time on a cold runner. They use `paths-ignore` only for well-defined fork-owned
+areas that cannot affect their runtime path, such as:
 
-**Jobs**:
-- Runs `ci/test-workbench.sh` which exercises all Workbench modes using local
-  dummy data (no Docker or CDS credentials required).
+```text
+doc/**
+workbench/ui/**
+workbench/web/**
+workbench/e2e/**
+workbench/server/**
+visualization/**
+```
 
-**Expected runtime**: < 15 minutes
+Individual planner/readiness files and their tests are also ignored. Changes to
+WRF source, build configuration, Dockerfiles, WPS/ERA5 integration files,
+Workbench runtime scripts, or the heavy workflow files themselves still trigger
+the relevant build.
+
+A pull request that changes both ignored UI files and a relevant runtime file
+still runs the heavy workflow.
+
+### Docker Reproducible Build
+
+Local build and verification:
+
+```bash
+docker build --tag wrf-reproducible .
+docker run --rm wrf-reproducible /usr/local/bin/verify-wrf-runtime.sh
+docker run --rm wrf-reproducible /usr/local/bin/smoke-test-wrf.sh
+sh workbench/run.sh workbench/examples/wrf-smoke.json
+```
+
+The workflow uploads concise build diagnostics on failure.
+
+### Docker WPS Reproducible Build
+
+Local build and verification:
+
+```bash
+docker build -f Dockerfile.wps --tag wps-reproducible .
+docker run --rm wps-reproducible /usr/local/bin/verify-wps-runtime.sh
+```
+
+### ERA5/WPS Integration Test
+
+The workflow builds `wps-reproducible` and `era5-pipeline`, then runs:
+
+```bash
+ERA5_IMAGE=era5-pipeline:latest \
+WORKDIR=/tmp/wps-integration-workdir \
+sh ci/test-era5-wps-integration.sh
+```
+
+The WPS execution itself uses the bundled mini GRIB input and runs without
+network access. Network access is needed while building the image to obtain the
+pinned upstream WPS source and packages.
 
 ---
 
-### Visualization MVP Tests (`visualization-tests.yml`)
+## Concurrency policy
 
-**Trigger**: push to `master`/`develop`; pull_request; workflow_dispatch
+Each heavy workflow groups runs by `github.ref` and cancels an older in-progress
+run when a newer commit arrives on the same pull request or branch.
 
-**Jobs**:
-- Runs `visualization/tests/test_visualization.sh` which validates
-  postprocessing scripts and web-viewer output using Python stdlib only.
-
-**Expected runtime**: < 10 minutes
-
----
-
-## Optional / manual workflows
-
-### ERA5 Download Pipeline (`docker-era5-pipeline.yml`)
-
-**Trigger**: workflow_dispatch only
-
-**Purpose**: Live ERA5 data download using the Copernicus CDS API.
-
-**Required secrets**:
-- `CDSAPI_KEY` — Copernicus CDS API key.  Request one at
-  <https://cds.climate.copernicus.eu/>.
-- `CDSAPI_URL` *(optional)* — Override the default CDS endpoint.
-
-**Inputs** (provided at dispatch time):
-- `cache_namespace` — Cache key namespace for downloaded ERA5 files.
-- `config_path` — Path (in the repo) to the ERA5 JSON request file.
-
-**Expected runtime**: up to 3 hours depending on CDS queue and request size.
+This does not weaken validation: only the newest commit is relevant for merge.
+It prevents several obsolete WRF/WPS compilations from consuming runners in
+parallel during review iterations.
 
 ---
 
-### HPC Regression Tests (`hpc-regression.yml`)
+## Optional and manual workflows
 
-**Trigger**: workflow_dispatch; pull_request with `compile-tests` or
-`all-tests` label applied by a maintainer with access to NCAR runners.
+### ERA5 Download Pipeline
 
-**Purpose**: Upstream NCAR HPC compilation and regression test suite.  Requires
-self-hosted runners and NCAR-specific infrastructure not available to external
-contributors.
+**Trigger:** `workflow_dispatch`
 
-**Required infrastructure**:
-- `derecho` self-hosted runner registered with this repository.
-- GLADE archive storage (`/glade/work/…`).
-- NCAR HPC account (e.g. `NMMM0012`).
+Requires:
 
-**Expected runtime**: up to 5 days (HPC queue-dependent).
+- `CDSAPI_KEY`
+- optional `CDSAPI_URL`
+
+The equivalent repository pipeline is documented in `doc/ERA5_WRF_PIPELINE.md`.
+A manual workflow is used because live CDS traffic is credentialed, potentially
+large, and not appropriate for every pull request.
+
+### HPC Regression Tests
+
+The upstream-style HPC suite requires the `derecho` self-hosted runner, NCAR
+accounting, and GLADE storage. It is intentionally separate from the portable
+fork tests.
+
+---
+
+## Trigger validation
+
+Changes to workflow selection should be verified with two controlled pull
+requests or branches:
+
+1. **UI/docs-only change**
+   - Workbench/UI/screenshot checks run.
+   - Docker WRF, Docker WPS, and ERA5/WPS integration do not start.
+2. **Runtime-relevant change**
+   - the corresponding heavy workflows start.
+   - a second commit cancels obsolete runs for the same ref.
+
+`workflow_dispatch` remains available for explicit verification even when path
+filters would skip an automatic run.
 
 ---
 
@@ -174,35 +204,16 @@ contributors.
 | `CDSAPI_KEY` | `docker-era5-pipeline.yml` | Yes | Copernicus CDS API key |
 | `CDSAPI_URL` | `docker-era5-pipeline.yml` | No | Override CDS endpoint URL |
 
-No secrets are required to run the default fork CI.
+No secrets are required for the portable automatic fork tests.
 
 ---
 
-## Relationship between workflows
+## Adding a workflow
 
-```
-push / pull_request
-  ├── ci.yml                    (shellcheck)
-  ├── docker-build.yml          (WRF image + smoke test)
-  ├── docker-wps-build.yml      (WPS image)
-  ├── era5-offline-dry-run.yml  (ERA5 config validation)
-  ├── wps-integration-test.yml  (end-to-end WPS pipeline)
-  ├── workbench-tests.yml       (workbench scripts)
-  └── visualization-tests.yml  (visualization scripts)
-
-workflow_dispatch
-  └── docker-era5-pipeline.yml  (live ERA5 download)
-
-workflow_dispatch / PR label (compile-tests | all-tests)
-  └── hpc-regression.yml        (NCAR HPC compilation tests)
-        └── test_workflow.yml   (reusable HPC runner logic)
-```
-
----
-
-## Adding a new workflow
-
-1. Place it under `.github/workflows/`.
-2. Use `runs-on: ubuntu-latest` unless NCAR infrastructure is explicitly needed.
-3. Add it to the table at the top of this document.
-4. If it requires secrets, add them to the secrets reference table.
+1. Put test logic in a repository script, container, or test module first.
+2. Add a thin workflow under `.github/workflows/`.
+3. Document the exact local equivalent.
+4. Use path filters appropriate to the cost and dependencies of the job.
+5. Add per-ref concurrency for expensive jobs.
+6. Keep real-data, credentialed, or HPC-only tests explicitly separated.
+7. Update this document and the workflow overview table.
