@@ -125,17 +125,25 @@ function DomainMap(props: {
   const domainRectangleRef = useRef<L.Rectangle | null>(null);
   const drawingRectangleRef = useRef<L.Rectangle | null>(null);
   const startPointRef = useRef<L.LatLng | null>(null);
+  const activePointerIdRef = useRef<number | null>(null);
   const drawModeRef = useRef(false);
   const [drawMode, setDrawMode] = useState(false);
 
   function stopDrawing() {
     const map = mapRef.current;
+    const container = map?.getContainer();
+    const pointerId = activePointerIdRef.current;
+    if (container && pointerId !== null && container.hasPointerCapture(pointerId)) {
+      container.releasePointerCapture(pointerId);
+    }
+    activePointerIdRef.current = null;
     drawModeRef.current = false;
     startPointRef.current = null;
     setDrawMode(false);
     if (map) {
       map.dragging.enable();
       map.getContainer().style.cursor = '';
+      map.getContainer().style.touchAction = '';
     }
     if (drawingRectangleRef.current && map) {
       map.removeLayer(drawingRectangleRef.current);
@@ -165,31 +173,56 @@ function DomainMap(props: {
     map.fitBounds(domainRectangle.getBounds(), { padding: [18, 18] });
     mapRef.current = map;
 
-    const handleMouseDown = (event: L.LeafletMouseEvent) => {
-      if (!drawModeRef.current) return;
-      startPointRef.current = event.latlng;
+    const container = map.getContainer();
+    const pointerLatLng = (event: PointerEvent): L.LatLng => {
+      const rectangle = container.getBoundingClientRect();
+      return map.containerPointToLatLng(
+        L.point(event.clientX - rectangle.left, event.clientY - rectangle.top),
+      );
+    };
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!drawModeRef.current || event.button !== 0) return;
+      const target = event.target as Element | null;
+      if (target?.closest('.leaflet-control')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      activePointerIdRef.current = event.pointerId;
+      container.setPointerCapture(event.pointerId);
+      const start = pointerLatLng(event);
+      startPointRef.current = start;
       if (drawingRectangleRef.current) {
         map.removeLayer(drawingRectangleRef.current);
       }
       drawingRectangleRef.current = L.rectangle(
-        L.latLngBounds(event.latlng, event.latlng),
+        L.latLngBounds(start, start),
         { weight: 2, dashArray: '7 5', fillOpacity: 0.08 },
       ).addTo(map);
     };
 
-    const handleMouseMove = (event: L.LeafletMouseEvent) => {
-      if (!drawModeRef.current || !startPointRef.current || !drawingRectangleRef.current) return;
-      drawingRectangleRef.current.setBounds(L.latLngBounds(startPointRef.current, event.latlng));
+    const handlePointerMove = (event: PointerEvent) => {
+      if (
+        !drawModeRef.current
+        || activePointerIdRef.current !== event.pointerId
+        || !startPointRef.current
+        || !drawingRectangleRef.current
+      ) return;
+      event.preventDefault();
+      drawingRectangleRef.current.setBounds(
+        L.latLngBounds(startPointRef.current, pointerLatLng(event)),
+      );
     };
 
-    const handleMouseUp = (event: L.LeafletMouseEvent) => {
+    const finishPointerDrawing = (event: PointerEvent) => {
       const start = startPointRef.current;
-      if (!drawModeRef.current || !start) return;
-
-      const west = Math.min(start.lng, event.latlng.lng);
-      const east = Math.max(start.lng, event.latlng.lng);
-      const south = Math.min(start.lat, event.latlng.lat);
-      const north = Math.max(start.lat, event.latlng.lat);
+      if (!drawModeRef.current || activePointerIdRef.current !== event.pointerId || !start) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const end = pointerLatLng(event);
+      const west = Math.min(start.lng, end.lng);
+      const east = Math.max(start.lng, end.lng);
+      const south = Math.min(start.lat, end.lat);
+      const north = Math.max(start.lat, end.lat);
       if (east - west >= MIN_DRAW_SPAN_DEGREES && north - south >= MIN_DRAW_SPAN_DEGREES) {
         props.onBoundsChange({
           west: roundedCoordinate(west),
@@ -201,16 +234,28 @@ function DomainMap(props: {
       stopDrawing();
     };
 
-    map.on('mousedown', handleMouseDown);
-    map.on('mousemove', handleMouseMove);
-    map.on('mouseup', handleMouseUp);
+    const handlePointerCancel = (event: PointerEvent) => {
+      if (activePointerIdRef.current === event.pointerId) stopDrawing();
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && drawModeRef.current) stopDrawing();
+    };
+
+    container.addEventListener('pointerdown', handlePointerDown, true);
+    container.addEventListener('pointermove', handlePointerMove, true);
+    container.addEventListener('pointerup', finishPointerDrawing, true);
+    container.addEventListener('pointercancel', handlePointerCancel, true);
+    document.addEventListener('keydown', handleKeyDown);
 
     const resizeTimer = window.setTimeout(() => map.invalidateSize(), 0);
     return () => {
       window.clearTimeout(resizeTimer);
-      map.off('mousedown', handleMouseDown);
-      map.off('mousemove', handleMouseMove);
-      map.off('mouseup', handleMouseUp);
+      container.removeEventListener('pointerdown', handlePointerDown, true);
+      container.removeEventListener('pointermove', handlePointerMove, true);
+      container.removeEventListener('pointerup', finishPointerDrawing, true);
+      container.removeEventListener('pointercancel', handlePointerCancel, true);
+      document.removeEventListener('keydown', handleKeyDown);
       map.remove();
       mapRef.current = null;
       domainRectangleRef.current = null;
@@ -234,6 +279,7 @@ function DomainMap(props: {
     setDrawMode(true);
     map.dragging.disable();
     map.getContainer().style.cursor = 'crosshair';
+    map.getContainer().style.touchAction = 'none';
   }
 
   return (
