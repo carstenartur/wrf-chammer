@@ -1,4 +1,9 @@
+const fs = require('fs');
+const path = require('path');
 const { test, expect } = require('@playwright/test');
+
+const repoRoot = path.resolve(__dirname, '../..');
+const screenshotDir = path.join(repoRoot, 'doc', 'user-guide', 'screenshots');
 
 test('plan and prepare real ERA5 data from the guided map plan', async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -18,6 +23,12 @@ test('plan and prepare real ERA5 data from the guided map plan', async ({ page }
   await expect(page.locator('#era5-plan-result')).toContainText('Copernicus Climate Data Store ERA5 reanalysis');
   await expect(page.locator('#era5-plan-result')).toContainText('Artificial weather data');
   await expect(page.locator('#era5-plan-result')).toContainText('no');
+
+  fs.mkdirSync(screenshotDir, { recursive: true });
+  await page.screenshot({
+    path: path.join(screenshotDir, 'xaver-03c-era5-data-plan.png'),
+    fullPage: true,
+  });
 
   await page.locator('#era5-prepare-data').click();
   await expect(page.locator('#era5-data-message')).toContainText('No network download has been started.');
