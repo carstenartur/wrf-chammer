@@ -48,3 +48,25 @@ test('capture the Xaver user-guide UI flow', async ({ page }) => {
   await expect(page.locator('#job-logs')).toContainText('Dry run complete');
   await capture(page, 'xaver-06-logs.png');
 });
+
+test('plan a map-selected Xaver domain without editing JSON', async ({ page }) => {
+  await page.route('https://www.openstreetmap.org/**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>Map tiles disabled in CI</body></html>' });
+  });
+  await page.goto('/');
+
+  await expect(page.getByRole('heading', { name: 'Choose a real map area and estimate the WRF job' })).toBeVisible();
+  await expect(page.locator('#wizard-map')).toHaveAttribute('src', /openstreetmap\.org/);
+  await expect(page.locator('#wizard-west')).toHaveValue('2');
+  await expect(page.locator('#wizard-north')).toHaveValue('58');
+
+  await page.getByRole('button', { name: 'Plan domain and preview job' }).click();
+  await expect(page.getByText('The map domain is valid and a job configuration was generated.')).toBeVisible();
+  await expect(page.locator('#wizard-result')).toContainText('91 × 91');
+  await expect(page.locator('#wizard-result')).toContainText('Recommended RAM');
+  await expect(page.locator('#wizard-config-preview')).toContainText('"domain_source": "map-bounds"');
+  await expect(page.locator('#wizard-config-preview')).toContainText('"quality_profile": "balanced"');
+
+  await page.getByRole('button', { name: 'Start planned dry-run' }).click();
+  await expect(page.locator('#wizard-status')).toContainText('finished successfully', { timeout: 30_000 });
+});
