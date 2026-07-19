@@ -1,0 +1,39 @@
+name: ERA5 Data Planner Tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'workbench/era5_planner.py'
+      - 'ci/test_era5_planner.py'
+      - 'ci/download-era5.py'
+      - 'doc/ERA5_DATA_PLANNING.md'
+      - '.github/workflows/era5-planner-tests.yml'
+  push:
+    branches: [master, develop]
+    paths:
+      - 'workbench/era5_planner.py'
+      - 'ci/test_era5_planner.py'
+      - 'ci/download-era5.py'
+      - 'doc/ERA5_DATA_PLANNING.md'
+      - '.github/workflows/era5-planner-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: era5-planner-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  planner-tests:
+    name: Canonical ERA5 request and cache tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run ERA5 planner tests
+        run: python3 ci/test_era5_planner.py
