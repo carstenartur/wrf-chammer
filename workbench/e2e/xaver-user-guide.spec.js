@@ -4,6 +4,10 @@ const { test, expect } = require('@playwright/test');
 
 const repoRoot = path.resolve(__dirname, '../..');
 const screenshotDir = path.join(repoRoot, 'doc', 'user-guide', 'screenshots');
+const transparentPng = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+  'base64',
+);
 
 async function capture(page, fileName) {
   fs.mkdirSync(screenshotDir, { recursive: true });
@@ -14,17 +18,17 @@ async function capture(page, fileName) {
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.route('https://www.openstreetmap.org/**', async (route) => {
+  await page.route(/^https:\/\/[abc]\.tile\.openstreetmap\.org\//, async (route) => {
     await route.fulfill({
       status: 200,
-      contentType: 'text/html',
-      body: '<html><body>OpenStreetMap network access is disabled in the deterministic browser test.</body></html>',
+      contentType: 'image/png',
+      body: transparentPng,
     });
   });
 });
 
 test('capture the Xaver user-guide UI flow', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('heading', { name: 'System readiness' })).toBeVisible();
   await expect(page.locator('.readiness-check').filter({ hasText: 'python' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Check again' })).toBeEnabled();
@@ -60,10 +64,10 @@ test('capture the Xaver user-guide UI flow', async ({ page }) => {
 });
 
 test('plan a map-selected Xaver domain without editing JSON', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
 
-  await expect(page.getByRole('heading', { name: 'Choose a real map area and estimate the WRF job' })).toBeVisible();
-  await expect(page.locator('#wizard-map')).toHaveAttribute('src', /openstreetmap\.org/);
+  await expect(page.getByRole('heading', { name: 'Draw a real map area and estimate the WRF job' })).toBeVisible();
+  await expect(page.locator('#wizard-map')).toBeVisible();
   await expect(page.locator('#wizard-west')).toHaveValue('2');
   await expect(page.locator('#wizard-north')).toHaveValue('58');
 
@@ -76,4 +80,26 @@ test('plan a map-selected Xaver domain without editing JSON', async ({ page }) =
 
   await page.getByRole('button', { name: 'Start planned dry-run' }).click();
   await expect(page.locator('#wizard-status')).toContainText('finished successfully', { timeout: 30_000 });
+});
+
+test('draw a new simulation rectangle directly on the map', async ({ page }) => {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  const map = page.locator('#wizard-map');
+  await expect(map).toBeVisible();
+  const box = await map.boundingBox();
+  if (!box) throw new Error('Map bounding box is unavailable');
+
+  await page.getByRole('button', { name: 'Draw simulation area' }).click();
+  await expect(page.getByText(/Drag from one corner/)).toBeVisible();
+
+  await page.mouse.move(box.x + box.width * 0.25, box.y + box.height * 0.25);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.75, box.y + box.height * 0.75, { steps: 8 });
+  await page.mouse.up();
+
+  await expect(page.getByRole('button', { name: 'Draw simulation area' })).toBeVisible();
+  await expect(page.locator('#wizard-west')).not.toHaveValue('2');
+  await expect(page.locator('#wizard-east')).not.toHaveValue('14');
+  await page.getByRole('button', { name: 'Plan domain and preview job' }).click();
+  await expect(page.getByText('The map domain is valid and a job configuration was generated.')).toBeVisible();
 });
