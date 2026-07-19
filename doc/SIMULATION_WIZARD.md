@@ -2,7 +2,7 @@
 
 The guided simulation wizard is the user-facing path for describing a WRF job without editing JSON or WRF/WPS namelists.
 
-This first implementation slice focuses on domain planning and transparent resource estimates. It does not yet execute a real ERA5/WPS/WRF simulation.
+This implementation slice focuses on interactive domain planning and transparent resource estimates. It does not yet execute a real ERA5/WPS/WRF simulation.
 
 ## Start the Workbench
 
@@ -16,11 +16,26 @@ Open:
 http://127.0.0.1:8080/
 ```
 
-The page contains a **Guided simulation planning** section below the existing event workflow.
+The page contains a **Guided simulation planning** section as a normal React component of the Workbench application.
+
+## Select the area directly on the map
+
+The map uses OpenStreetMap tiles with attribution. Click **Draw simulation area**, then drag from one corner of the desired domain to the opposite corner.
+
+After the drag operation:
+
+- the selected rectangle remains visible,
+- west, south, east and north are copied into the numeric fields,
+- a previous plan is invalidated,
+- the server recalculates the grid only after the user requests a new preview.
+
+The four numeric coordinate fields remain available as the keyboard-accessible alternative to pointer interaction. Editing them updates the map rectangle as well.
+
+The map provides real geographic context. It is not used to invent, interpolate or substitute weather data.
 
 ## Xaver reference selection
 
-The default values cover an interesting Storm Xaver region:
+The defaults cover an interesting Storm Xaver region:
 
 ```text
 West:   2.0° E
@@ -32,7 +47,7 @@ End:   2013-12-06 06:00 UTC
 Profile: balanced regional (9 km)
 ```
 
-The OpenStreetMap preview provides real geographic context. The map is not used to invent weather data; it only helps choose the simulation domain.
+This produces an aligned 91 × 91 horizontal grid in the current planner.
 
 ## Server-side planning
 
@@ -48,7 +63,7 @@ or requests a complete validated dry-run preview through:
 POST /api/wizard/preview
 ```
 
-The server derives:
+The browser does not calculate the authoritative WRF grid. The server derives:
 
 - domain center,
 - physical width and height,
