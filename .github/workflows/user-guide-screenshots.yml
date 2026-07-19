@@ -12,6 +12,18 @@ on:
       - 'doc/USER_GUIDE.md'
       - 'doc/user-guide/**'
       - '.github/workflows/user-guide-screenshots.yml'
+  push:
+    branches:
+      - feature/simulation-wizard-domain-plan
+    paths:
+      - 'workbench/ui/**'
+      - 'workbench/web/**'
+      - 'workbench/server/**'
+      - 'workbench/e2e/**'
+      - 'ci/generate-user-guide-screenshots.sh'
+      - 'doc/USER_GUIDE.md'
+      - 'doc/user-guide/**'
+      - '.github/workflows/user-guide-screenshots.yml'
   workflow_dispatch:
 
 concurrency:
@@ -23,6 +35,7 @@ permissions:
 
 jobs:
   xaver-user-guide-screenshots:
+    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[materialized-ui]') }}
     name: Generate Xaver user-guide screenshots
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -79,7 +92,7 @@ jobs:
             workbench/web/styles.css
           if-no-files-found: warn
 
-      - name: Verify checked-in screenshots exist
+      - name: Verify generated screenshots exist
         run: |
           for file in \
             xaver-01-search.png \
@@ -91,7 +104,47 @@ jobs:
             xaver-06-logs.png
           do
             if [ ! -f "doc/user-guide/screenshots/${file}" ]; then
-              echo "Missing committed screenshot: ${file}"
+              echo "Missing generated screenshot: ${file}"
               exit 1
             fi
           done
+
+  materialize-generated-assets:
+    name: Materialize reviewed screenshots and built UI
+    needs: xaver-user-guide-screenshots
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/simulation-wizard-domain-plan
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download screenshots
+        uses: actions/download-artifact@v4
+        with:
+          name: xaver-user-guide-screenshots
+          path: doc/user-guide/screenshots
+
+      - name: Download generated UI assets
+        uses: actions/download-artifact@v4
+        with:
+          name: generated-ui-assets
+          path: workbench/web
+
+      - name: Commit reviewed generated assets
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add workbench/web/index.html workbench/web/app.js workbench/web/styles.css
+          git add doc/user-guide/screenshots/*.png
+          if git diff --cached --quiet; then
+            echo "Generated assets already match the feature branch."
+            exit 0
+          fi
+          git commit -m "Materialize generated UI and documentation screenshots [materialized-ui]"
+          git push origin HEAD:feature/simulation-wizard-domain-plan
