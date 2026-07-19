@@ -107,7 +107,7 @@ class Era5DataService:
             "remediation": (
                 None
                 if configured
-                else "Create ~/.cdsapirc or configure CDSAPI_KEY before downloading real ERA5 data."
+                else "Create a local Copernicus CDS API configuration before downloading real ERA5 data."
             ),
         }
 
