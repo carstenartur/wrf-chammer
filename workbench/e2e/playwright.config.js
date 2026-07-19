@@ -26,6 +26,10 @@ module.exports = defineConfig({
   webServer: {
     command: 'python3 -m workbench.server.application --host 127.0.0.1 --port 8080',
     cwd: repoRoot,
+    env: {
+      ...process.env,
+      WRF_CHAMMER_ERA5_CACHE_ROOT: path.join(repoRoot, 'workbench-runs', 'playwright-era5-cache'),
+    },
     url: 'http://127.0.0.1:8080/api/health',
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
