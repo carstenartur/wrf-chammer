@@ -104,10 +104,11 @@ for expected in (
     "preview-job",
     "domain-preview",
     "/web/app.js",
-    "/web/domain-wizard.js",
-    "/web/domain-wizard.css",
+    "/web/styles.css",
 ):
     assert expected in html, expected
+assert "domain-wizard.js" not in html
+assert "domain-wizard.css" not in html
 
 status, content_type, js = get_text("/web/app.js")
 assert status == 200
@@ -115,23 +116,11 @@ assert "javascript" in content_type
 for expected in ("/api/events", "/api/jobs/preview", "/api/jobs", "renderDomainPreview"):
     assert expected in js, expected
 
-status, content_type, wizard_js = get_text("/web/domain-wizard.js")
-assert status == 200
-assert "javascript" in content_type
-for expected in ("/api/wizard/preview", "/api/jobs", "openstreetmap.org", "wizard-plan"):
-    assert expected in wizard_js, expected
-
 status, content_type, css = get_text("/web/styles.css")
 assert status == 200
 assert "text/css" in content_type
 for expected in (".domain-preview", ".event-card", ".status-pill"):
     assert expected in css, expected
-
-status, content_type, wizard_css = get_text("/web/domain-wizard.css")
-assert status == 200
-assert "text/css" in content_type
-for expected in (".wizard-shell", ".wizard-map-wrap", ".wizard-metrics"):
-    assert expected in wizard_css, expected
 
 xaver = request("GET", "/api/events/xaver")
 assert xaver["ok"] is True
