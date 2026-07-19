@@ -13,6 +13,16 @@ async function capture(page, fileName) {
   });
 }
 
+test.beforeEach(async ({ page }) => {
+  await page.route('https://www.openstreetmap.org/**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/html',
+      body: '<html><body>OpenStreetMap network access is disabled in the deterministic browser test.</body></html>',
+    });
+  });
+});
+
 test('capture the Xaver user-guide UI flow', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'System readiness' })).toBeVisible();
@@ -50,9 +60,6 @@ test('capture the Xaver user-guide UI flow', async ({ page }) => {
 });
 
 test('plan a map-selected Xaver domain without editing JSON', async ({ page }) => {
-  await page.route('https://www.openstreetmap.org/**', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>Map tiles disabled in CI</body></html>' });
-  });
   await page.goto('/');
 
   await expect(page.getByRole('heading', { name: 'Choose a real map area and estimate the WRF job' })).toBeVisible();
