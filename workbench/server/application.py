@@ -7,6 +7,7 @@ import argparse
 import sys
 from http import HTTPStatus
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 if __package__ in (None, ""):
@@ -22,22 +23,47 @@ from workbench.domain_planner import (  # noqa: E402
     available_profiles,
     plan_domain,
 )
+from workbench.era5_planner import Era5PlanningError  # noqa: E402
+from workbench.era5_service import Era5DataService, Era5DataServiceError  # noqa: E402
 from workbench.readiness import collect_readiness  # noqa: E402
 from workbench.server.server import ApiError, WorkbenchApiHandler, WorkbenchApiServer  # noqa: E402
 
 
 class WorkbenchApplicationHandler(WorkbenchApiHandler):
+    def _era5_service(self) -> Era5DataService:
+        service = getattr(self.server, "era5_data_service", None)
+        if not isinstance(service, Era5DataService):
+            service = Era5DataService(self.server.repo_root)
+            self.server.era5_data_service = service
+        return service
+
+    def _latest_wizard_preview(self) -> dict[str, Any] | None:
+        preview = getattr(self.server, "latest_wizard_preview", None)
+        return preview if isinstance(preview, dict) else None
+
     def do_GET(self) -> None:  # noqa: N802
         path = urlparse(self.path).path.rstrip("/") or "/"
-        if path not in {"/api/readiness", "/api/domain/profiles"}:
+        supported = {
+            "/api/readiness",
+            "/api/domain/profiles",
+            "/api/wizard/latest",
+            "/api/data/era5/status",
+        }
+        if path not in supported:
             super().do_GET()
             return
         try:
             self._require_local_client()
             if path == "/api/readiness":
-                self._send_json(HTTPStatus.OK, collect_readiness(self.server.repo_root))
+                payload = collect_readiness(self.server.repo_root)
+            elif path == "/api/domain/profiles":
+                payload = {"ok": True, "profiles": available_profiles()}
+            elif path == "/api/wizard/latest":
+                latest = self._latest_wizard_preview()
+                payload = {"ok": True, "available": latest is not None, "preview": latest}
             else:
-                self._send_json(HTTPStatus.OK, {"ok": True, "profiles": available_profiles()})
+                payload = self._era5_service().status(self._latest_wizard_preview())
+            self._send_json(HTTPStatus.OK, payload)
         except ApiError as exc:
             self._send_error(exc.status, exc.code, exc.message, exc.details)
         except Exception as exc:  # pragma: no cover
@@ -45,21 +71,34 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         path = urlparse(self.path).path.rstrip("/") or "/"
-        if path not in {"/api/domain/plan", "/api/wizard/preview"}:
+        supported = {
+            "/api/domain/plan",
+            "/api/wizard/preview",
+            "/api/data/era5/plan",
+            "/api/data/era5/prepare",
+        }
+        if path not in supported:
             super().do_POST()
             return
         try:
             self._require_local_client()
             request = self._read_json()
             if path == "/api/domain/plan":
-                self._send_json(HTTPStatus.OK, plan_domain(request))
+                payload = plan_domain(request)
+            elif path == "/api/wizard/preview":
+                payload = self._wizard_preview(request)
+            elif path == "/api/data/era5/plan":
+                payload = self._era5_service().plan(request, self._latest_wizard_preview())
             else:
-                self._send_json(HTTPStatus.OK, self._wizard_preview(request))
-        except DomainPlanningError as exc:
+                payload = self._era5_service().prepare(request, self._latest_wizard_preview())
+            self._send_json(HTTPStatus.OK, payload)
+        except (DomainPlanningError, Era5PlanningError) as exc:
             self._send_json(
                 HTTPStatus.UNPROCESSABLE_ENTITY,
                 {"ok": False, "valid": False, "errors": exc.errors},
             )
+        except Era5DataServiceError as exc:
+            self._send_error(HTTPStatus.CONFLICT, exc.code, exc.message)
         except (CatalogueError, EventNotFoundError) as exc:
             self._send_json(
                 HTTPStatus.UNPROCESSABLE_ENTITY,
@@ -68,9 +107,9 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
         except ApiError as exc:
             self._send_error(exc.status, exc.code, exc.message, exc.details)
         except Exception as exc:  # pragma: no cover
-            self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "domain_planning_error", str(exc))
+            self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "application_error", str(exc))
 
-    def _wizard_preview(self, request: dict) -> dict:
+    def _wizard_preview(self, request: dict[str, Any]) -> dict[str, Any]:
         event_ref = request.get("event") or "xaver"
         if not isinstance(event_ref, str) or not event_ref.strip():
             raise DomainPlanningError(["event must be a non-empty string"])
@@ -110,7 +149,7 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
             metadata["resource_estimate"] = plan["resources"]
 
         errors = self._validate_config(config)
-        return {
+        preview = {
             "ok": not errors,
             "valid": not errors,
             "errors": errors,
@@ -118,6 +157,9 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
             "plan": plan,
             "config": config,
         }
+        if not errors:
+            self.server.latest_wizard_preview = preview
+        return preview
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
