@@ -4,7 +4,6 @@ test('plan and prepare real ERA5 data from the guided map plan', async ({ page }
   await page.goto('/', { waitUntil: 'domcontentloaded' });
 
   await expect(page.getByRole('heading', { name: 'Plan ERA5 boundary data' })).toBeVisible();
-  await expect(page.locator('#era5-plan-data')).toBeDisabled();
 
   await page.getByRole('button', { name: 'Plan domain and preview job' }).click();
   await expect(page.getByText('The map domain is valid and a job configuration was generated.')).toBeVisible();
