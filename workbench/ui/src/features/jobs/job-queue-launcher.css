@@ -1,0 +1,67 @@
+.job-launcher {
+  max-width: 1180px;
+  margin: 0 auto 18px;
+  padding: 20px 22px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px 20px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.job-launcher h2,
+.job-launcher p {
+  margin-bottom: 6px;
+}
+
+.job-launcher > div:first-child p:last-child {
+  color: var(--muted);
+}
+
+.job-launcher-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.job-launcher-message {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  background: #fbfdff;
+}
+
+.job-launcher-message.pending {
+  color: var(--warn);
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.job-launcher-message.success {
+  color: var(--good);
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.job-launcher-message.error {
+  color: var(--bad);
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+
+@media (max-width: 820px) {
+  .job-launcher {
+    grid-template-columns: 1fr;
+  }
+
+  .job-launcher-actions {
+    justify-content: flex-start;
+  }
+}
