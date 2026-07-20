@@ -5,13 +5,18 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - 'ci/download-era5.py'
+      - 'ci/validate-cds-credentials.py'
       - 'workbench/era5_cache_service.py'
+      - 'workbench/era5_credential_service.py'
       - 'workbench/era5_download_manager.py'
       - 'workbench/era5_service.py'
       - 'workbench/era5_planner.py'
       - 'workbench/server/application.py'
+      - 'workbench/server/tests/test_cds_credential_validator.py'
       - 'workbench/server/tests/test_era5_cache_api.py'
       - 'workbench/server/tests/test_era5_cache_service.py'
+      - 'workbench/server/tests/test_era5_credential_api.py'
+      - 'workbench/server/tests/test_era5_credential_service.py'
       - 'workbench/server/tests/test_era5_data_api.py'
       - 'workbench/server/tests/test_era5_download_api.py'
       - 'workbench/server/tests/test_era5_download_manager.py'
@@ -19,22 +24,29 @@ on:
       - 'workbench/server/tests/test_ui_public_asset_build.py'
       - 'workbench/ui/index.html'
       - 'workbench/ui/public/era5-cache-management.js'
+      - 'workbench/ui/public/era5-credential-validation.js'
       - 'workbench/ui/public/era5-download-control.js'
       - 'workbench/web/index.html'
       - 'workbench/web/era5-cache-management.js'
+      - 'workbench/web/era5-credential-validation.js'
       - 'workbench/web/era5-download-control.js'
       - '.github/workflows/era5-data-api-tests.yml'
   push:
     branches: [master, develop]
     paths:
       - 'ci/download-era5.py'
+      - 'ci/validate-cds-credentials.py'
       - 'workbench/era5_cache_service.py'
+      - 'workbench/era5_credential_service.py'
       - 'workbench/era5_download_manager.py'
       - 'workbench/era5_service.py'
       - 'workbench/era5_planner.py'
       - 'workbench/server/application.py'
+      - 'workbench/server/tests/test_cds_credential_validator.py'
       - 'workbench/server/tests/test_era5_cache_api.py'
       - 'workbench/server/tests/test_era5_cache_service.py'
+      - 'workbench/server/tests/test_era5_credential_api.py'
+      - 'workbench/server/tests/test_era5_credential_service.py'
       - 'workbench/server/tests/test_era5_data_api.py'
       - 'workbench/server/tests/test_era5_download_api.py'
       - 'workbench/server/tests/test_era5_download_manager.py'
@@ -42,9 +54,11 @@ on:
       - 'workbench/server/tests/test_ui_public_asset_build.py'
       - 'workbench/ui/index.html'
       - 'workbench/ui/public/era5-cache-management.js'
+      - 'workbench/ui/public/era5-credential-validation.js'
       - 'workbench/ui/public/era5-download-control.js'
       - 'workbench/web/index.html'
       - 'workbench/web/era5-cache-management.js'
+      - 'workbench/web/era5-credential-validation.js'
       - 'workbench/web/era5-download-control.js'
       - '.github/workflows/era5-data-api-tests.yml'
   workflow_dispatch:
@@ -60,21 +74,24 @@ jobs:
   api-tests:
     name: Persistent credential-safe ERA5 data jobs
     runs-on: ubuntu-latest
-    timeout-minutes: 7
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run ERA5 planner, download, and cache tests
+      - name: Run ERA5 planner, credential, download, and cache tests
         shell: bash
         run: |
           LOG_FILE="${RUNNER_TEMP}/era5-data-api-tests.log"
           {
+            python3 workbench/server/tests/test_cds_credential_validator.py -v
+            python3 workbench/server/tests/test_era5_credential_service.py -v
             python3 workbench/server/tests/test_era5_data_api.py
             python3 workbench/server/tests/test_era5_download_manager.py -v
             python3 workbench/server/tests/test_era5_download_path_security.py -v
             python3 workbench/server/tests/test_era5_cache_service.py -v
             python3 workbench/server/tests/test_ui_public_asset_build.py
+            python3 workbench/server/tests/test_era5_credential_api.py
             python3 workbench/server/tests/test_era5_download_api.py
             python3 workbench/server/tests/test_era5_cache_api.py
           } >"${LOG_FILE}" 2>&1 || {
@@ -86,6 +103,7 @@ jobs:
       - name: Verify browser controls syntax
         shell: bash
         run: |
+          node --check workbench/web/era5-credential-validation.js
           node --check workbench/web/era5-download-control.js
           node --check workbench/web/era5-cache-management.js
 

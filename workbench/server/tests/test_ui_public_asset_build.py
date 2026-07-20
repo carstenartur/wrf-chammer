@@ -10,12 +10,14 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 
 def main() -> int:
     index = (REPO_ROOT / "workbench" / "ui" / "index.html").read_text(encoding="utf-8")
-    assert '<script src="/era5-download-control.js"></script>' in index
-    assert '<script src="/era5-cache-management.js"></script>' in index
-    assert '%BASE_URL%era5-download-control.js' not in index
-    assert '%BASE_URL%era5-cache-management.js' not in index
-    assert (REPO_ROOT / "workbench" / "ui" / "public" / "era5-download-control.js").is_file()
-    assert (REPO_ROOT / "workbench" / "ui" / "public" / "era5-cache-management.js").is_file()
+    for filename in (
+        "era5-credential-validation.js",
+        "era5-download-control.js",
+        "era5-cache-management.js",
+    ):
+        assert f'<script src="/{filename}"></script>' in index
+        assert f'%BASE_URL%{filename}' not in index
+        assert (REPO_ROOT / "workbench" / "ui" / "public" / filename).is_file()
     print("Workbench Vite public-asset contract passed")
     return 0
 
