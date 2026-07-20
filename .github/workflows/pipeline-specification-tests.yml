@@ -4,22 +4,42 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
+      - 'ci/sync-workbench-public-assets.py'
       - 'workbench/pipeline_specification.py'
       - 'workbench/pipeline_specification_service.py'
+      - 'workbench/server/application.py'
       - 'workbench/server/tests/test_pipeline_specification.py'
       - 'workbench/server/tests/test_pipeline_specification_service.py'
       - 'workbench/server/tests/test_pipeline_specification_path_security.py'
+      - 'workbench/server/tests/test_pipeline_specification_api.py'
+      - 'workbench/server/tests/test_real_pipeline_specification_ui.js'
+      - 'workbench/server/tests/test_ui_public_asset_build.py'
+      - 'workbench/web/real-pipeline-specification.js'
+      - 'workbench/web/index.html'
+      - 'workbench/ui/index.html'
+      - 'workbench/ui/public/real-pipeline-specification.js'
       - 'doc/REAL_PIPELINE_SPECIFICATION.md'
+      - 'doc/REAL_PIPELINE_SPECIFICATION_UI.md'
       - '.github/workflows/pipeline-specification-tests.yml'
   push:
     branches: [master, develop]
     paths:
+      - 'ci/sync-workbench-public-assets.py'
       - 'workbench/pipeline_specification.py'
       - 'workbench/pipeline_specification_service.py'
+      - 'workbench/server/application.py'
       - 'workbench/server/tests/test_pipeline_specification.py'
       - 'workbench/server/tests/test_pipeline_specification_service.py'
       - 'workbench/server/tests/test_pipeline_specification_path_security.py'
+      - 'workbench/server/tests/test_pipeline_specification_api.py'
+      - 'workbench/server/tests/test_real_pipeline_specification_ui.js'
+      - 'workbench/server/tests/test_ui_public_asset_build.py'
+      - 'workbench/web/real-pipeline-specification.js'
+      - 'workbench/web/index.html'
+      - 'workbench/ui/index.html'
+      - 'workbench/ui/public/real-pipeline-specification.js'
       - 'doc/REAL_PIPELINE_SPECIFICATION.md'
+      - 'doc/REAL_PIPELINE_SPECIFICATION_UI.md'
       - '.github/workflows/pipeline-specification-tests.yml'
   workflow_dispatch:
 
@@ -36,16 +56,24 @@ concurrency:
 jobs:
   specification-tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 7
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify Python syntax
+      - name: Verify Python and browser syntax
         run: |
           python3 -m py_compile \
+            ci/sync-workbench-public-assets.py \
             workbench/pipeline_specification.py \
-            workbench/pipeline_specification_service.py
+            workbench/pipeline_specification_service.py \
+            workbench/server/application.py
+          node --check workbench/web/real-pipeline-specification.js
+
+      - name: Verify canonical public assets
+        run: |
+          python3 ci/sync-workbench-public-assets.py --check
+          python3 workbench/server/tests/test_ui_public_asset_build.py
 
       - name: Test deterministic identities and namelists
         shell: bash
@@ -76,6 +104,19 @@ jobs:
               exit 1
             }
           cat "${RUNNER_TEMP}/pipeline-path-tests.log"
+
+      - name: Test pipeline specification application API
+        shell: bash
+        run: |
+          python3 workbench/server/tests/test_pipeline_specification_api.py \
+            > "${RUNNER_TEMP}/pipeline-api-tests.log" 2>&1 || {
+              cat "${RUNNER_TEMP}/pipeline-api-tests.log"
+              exit 1
+            }
+          cat "${RUNNER_TEMP}/pipeline-api-tests.log"
+
+      - name: Test pinned runtime UI gating
+        run: node workbench/server/tests/test_real_pipeline_specification_ui.js
 
       - name: Upload focused test diagnostics
         if: always()

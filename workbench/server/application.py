@@ -40,6 +40,10 @@ from workbench.era5_download_manager import (  # noqa: E402
 )
 from workbench.era5_planner import Era5PlanningError  # noqa: E402
 from workbench.era5_service import Era5DataService, Era5DataServiceError  # noqa: E402
+from workbench.pipeline_specification_service import (  # noqa: E402
+    PipelineSpecificationService,
+    PipelineSpecificationServiceError,
+)
 from workbench.readiness import collect_readiness  # noqa: E402
 from workbench.server.server import ApiError, WorkbenchApiHandler, WorkbenchApiServer  # noqa: E402
 
@@ -47,6 +51,8 @@ _ERA5_DOWNLOADS_PATH = "/api/data/era5/downloads"
 _ERA5_CACHE_PATH = "/api/data/era5/cache"
 _ERA5_CREDENTIAL_STATUS_PATH = "/api/data/era5/credentials/validation"
 _ERA5_CREDENTIAL_VALIDATE_PATH = "/api/data/era5/credentials/validate"
+_PIPELINE_SPECIFICATIONS_PATH = "/api/pipeline/specifications"
+_PIPELINE_SPECIFICATION_READINESS_PATH = "/api/pipeline/specifications/readiness"
 
 
 class WorkbenchApplicationHandler(WorkbenchApiHandler):
@@ -55,6 +61,7 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
             "/web/era5-download-control.js": "era5-download-control.js",
             "/web/era5-cache-management.js": "era5-cache-management.js",
             "/web/era5-credential-validation.js": "era5-credential-validation.js",
+            "/web/real-pipeline-specification.js": "real-pipeline-specification.js",
         }
         filename = static_scripts.get(path)
         if filename:
@@ -103,6 +110,16 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
             self.server.era5_credential_validation_service = service
         return service
 
+    def _pipeline_specification_service(self) -> PipelineSpecificationService:
+        service = getattr(self.server, "pipeline_specification_service", None)
+        if not isinstance(service, PipelineSpecificationService):
+            service = PipelineSpecificationService(
+                self.server.repo_root,
+                self._era5_service(),
+            )
+            self.server.pipeline_specification_service = service
+        return service
+
     def _latest_wizard_preview(self) -> dict[str, Any] | None:
         preview = getattr(self.server, "latest_wizard_preview", None)
         return preview if isinstance(preview, dict) else None
@@ -117,9 +134,13 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
             _ERA5_DOWNLOADS_PATH,
             _ERA5_CACHE_PATH,
             _ERA5_CREDENTIAL_STATUS_PATH,
+            _PIPELINE_SPECIFICATIONS_PATH,
+            _PIPELINE_SPECIFICATION_READINESS_PATH,
         }
-        dynamic_supported = path.startswith(f"{_ERA5_DOWNLOADS_PATH}/") or path.startswith(
-            f"{_ERA5_CACHE_PATH}/"
+        dynamic_supported = (
+            path.startswith(f"{_ERA5_DOWNLOADS_PATH}/")
+            or path.startswith(f"{_ERA5_CACHE_PATH}/")
+            or path.startswith(f"{_PIPELINE_SPECIFICATIONS_PATH}/")
         )
         if path not in supported and not dynamic_supported:
             super().do_GET()
@@ -137,6 +158,25 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
                 payload = self._era5_service().status(self._latest_wizard_preview())
             elif path == _ERA5_CREDENTIAL_STATUS_PATH:
                 payload = self._era5_credential_service().status()
+            elif path == _PIPELINE_SPECIFICATION_READINESS_PATH:
+                payload = self._pipeline_specification_service().readiness()
+                latest = self._latest_wizard_preview()
+                payload["wizard_preview_available"] = bool(
+                    isinstance(latest, dict) and latest.get("valid")
+                )
+            elif path == _PIPELINE_SPECIFICATIONS_PATH:
+                specifications = self._pipeline_specification_service().list()
+                payload = {
+                    "ok": True,
+                    "count": len(specifications),
+                    "specifications": specifications,
+                }
+            elif path.startswith(f"{_PIPELINE_SPECIFICATIONS_PATH}/"):
+                spec_key = unquote(path[len(f"{_PIPELINE_SPECIFICATIONS_PATH}/"):])
+                payload = {
+                    "ok": True,
+                    "specification": self._pipeline_specification_service().get(spec_key),
+                }
             elif path == _ERA5_DOWNLOADS_PATH:
                 downloads = self._era5_download_manager().list()
                 payload = {"ok": True, "count": len(downloads), "downloads": downloads}
@@ -149,6 +189,8 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
             else:
                 payload = self._handle_get_era5_download(path)
             self._send_json(HTTPStatus.OK, payload)
+        except PipelineSpecificationServiceError as exc:
+            self._send_pipeline_specification_error(exc)
         except Era5CredentialValidationError as exc:
             self._send_credential_error(exc)
         except Era5CacheServiceError as exc:
@@ -171,6 +213,7 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
             "/api/data/era5/prepare",
             _ERA5_DOWNLOADS_PATH,
             _ERA5_CREDENTIAL_VALIDATE_PATH,
+            _PIPELINE_SPECIFICATIONS_PATH,
         }
         is_download_action = path.startswith(f"{_ERA5_DOWNLOADS_PATH}/") and (
             path.endswith("/cancel") or path.endswith("/retry")
@@ -199,6 +242,13 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
             elif path == _ERA5_CREDENTIAL_VALIDATE_PATH:
                 payload = {"ok": True, "validation": self._era5_credential_service().start()}
                 status = HTTPStatus.ACCEPTED
+            elif path == _PIPELINE_SPECIFICATIONS_PATH:
+                specification = self._pipeline_specification_service().create(
+                    request,
+                    self._latest_wizard_preview(),
+                )
+                payload = {"ok": True, "specification": specification}
+                status = HTTPStatus.CREATED
             elif path == _ERA5_DOWNLOADS_PATH:
                 download = self._era5_download_manager().start(
                     request, self._latest_wizard_preview()
@@ -220,6 +270,8 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
                 HTTPStatus.UNPROCESSABLE_ENTITY,
                 {"ok": False, "valid": False, "errors": exc.errors},
             )
+        except PipelineSpecificationServiceError as exc:
+            self._send_pipeline_specification_error(exc)
         except Era5CredentialValidationError as exc:
             self._send_credential_error(exc)
         except Era5CacheServiceError as exc:
@@ -258,6 +310,30 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
         else:  # guarded by do_POST
             raise Era5DownloadManagerError("download_not_found", "ERA5 download job not found.")
         return {"ok": True, "download": download}
+
+    def _send_pipeline_specification_error(
+        self, exc: PipelineSpecificationServiceError
+    ) -> None:
+        if exc.code == "specification_not_found":
+            status = HTTPStatus.NOT_FOUND
+        elif exc.code in {
+            "invalid_specification_request",
+            "invalid_plan_key",
+            "invalid_pipeline_profile",
+            "pipeline_specification_invalid",
+        }:
+            status = HTTPStatus.UNPROCESSABLE_ENTITY
+        elif exc.code in {
+            "era5_plan_unavailable",
+            "era5_checksums_unavailable",
+            "era5_provenance_unavailable",
+            "runtime_identity_unavailable",
+            "source_revision_unavailable",
+        }:
+            status = HTTPStatus.CONFLICT
+        else:
+            status = HTTPStatus.INTERNAL_SERVER_ERROR
+        self._send_error(status, exc.code, exc.message)
 
     def _send_credential_error(self, exc: Era5CredentialValidationError) -> None:
         if exc.code in {"credentials_not_configured", "validation_in_progress"}:
