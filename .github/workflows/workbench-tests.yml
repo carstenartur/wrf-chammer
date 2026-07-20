@@ -31,6 +31,12 @@ jobs:
       - name: Run Workbench lifecycle CLI tests
         run: python3 ci/test_workbench_cli.py
 
+      - name: Run persistent job store and worker tests
+        run: python3 ci/test_persistent_job_store.py
+
+      - name: Run persistent job API tests
+        run: python3 ci/test_persistent_job_api.py
+
       - name: Run domain planner tests
         run: python3 ci/test_domain_planner.py
 
