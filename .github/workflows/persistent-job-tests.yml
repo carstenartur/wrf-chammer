@@ -11,6 +11,7 @@ on:
       - 'workbench/cli.py'
       - 'ci/test_persistent_job_store.py'
       - 'ci/test_persistent_job_api.py'
+      - 'ci/test_worker_recovery.py'
       - 'ci/test_workbench_cli.py'
       - 'doc/JOB_ORCHESTRATION.md'
       - '.github/workflows/persistent-job-tests.yml'
@@ -24,6 +25,7 @@ on:
       - 'workbench/cli.py'
       - 'ci/test_persistent_job_store.py'
       - 'ci/test_persistent_job_api.py'
+      - 'ci/test_worker_recovery.py'
       - 'ci/test_workbench_cli.py'
       - 'doc/JOB_ORCHESTRATION.md'
       - '.github/workflows/persistent-job-tests.yml'
@@ -53,8 +55,15 @@ jobs:
           fi
           cat /tmp/persistent-store.log
 
+      - name: Test reused worker id recovery
+        run: |
+          if ! python3 ci/test_worker_recovery.py > /tmp/persistent-recovery.log 2>&1; then
+            cat /tmp/persistent-recovery.log
+            exit 1
+          fi
+          cat /tmp/persistent-recovery.log
+
       - name: Test persistent HTTP API and worker
-        if: ${{ success() }}
         run: |
           if ! python3 ci/test_persistent_job_api.py > /tmp/persistent-api.log 2>&1; then
             cat /tmp/persistent-api.log
@@ -63,7 +72,6 @@ jobs:
           cat /tmp/persistent-api.log
 
       - name: Test managed server and worker lifecycle
-        if: ${{ success() }}
         run: |
           if ! python3 ci/test_workbench_cli.py > /tmp/persistent-cli.log 2>&1; then
             cat /tmp/persistent-cli.log
