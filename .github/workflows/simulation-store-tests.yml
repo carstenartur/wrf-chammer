@@ -1,0 +1,57 @@
+name: Persistent Simulation Store Tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'workbench/simulation_store.py'
+      - 'workbench/server/tests/test_simulation_store.py'
+      - 'doc/PERSISTENT_SIMULATION_JOBS.md'
+      - '.github/workflows/simulation-store-tests.yml'
+  push:
+    branches: [master, develop]
+    paths:
+      - 'workbench/simulation_store.py'
+      - 'workbench/server/tests/test_simulation_store.py'
+      - 'doc/PERSISTENT_SIMULATION_JOBS.md'
+      - '.github/workflows/simulation-store-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .
+
+concurrency:
+  group: persistent-simulation-store-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  store-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify Python syntax
+        run: python3 -m py_compile workbench/simulation_store.py
+
+      - name: Run SQLite state-machine tests
+        shell: bash
+        run: |
+          python3 workbench/server/tests/test_simulation_store.py -v \
+            > "${RUNNER_TEMP}/simulation-store-tests.log" 2>&1 || {
+              cat "${RUNNER_TEMP}/simulation-store-tests.log"
+              exit 1
+            }
+          cat "${RUNNER_TEMP}/simulation-store-tests.log"
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: persistent-simulation-store-test-log
+          path: ${{ runner.temp }}/simulation-store-tests.log
+          if-no-files-found: error
