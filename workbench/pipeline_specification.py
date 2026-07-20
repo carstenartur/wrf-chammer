@@ -7,7 +7,7 @@ import hashlib
 import json
 import math
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 _SPEC_VERSION = 1
@@ -103,19 +103,26 @@ def parse_utc_timestamp(value: Any, field: str) -> datetime:
         parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
     except ValueError as exc:
         raise PipelineSpecificationError([f"{field} must be an ISO-8601 UTC timestamp"]) from exc
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
+    if parsed.tzinfo is None or parsed.utcoffset() != timedelta(0):
+        raise PipelineSpecificationError([f"{field} must use the UTC offset Z or +00:00"])
     return parsed.astimezone(timezone.utc)
 
 
-def _positive_number(value: Any, field: str) -> float:
+def _finite_number(value: Any, field: str) -> float:
     if isinstance(value, bool):
-        raise PipelineSpecificationError([f"{field} must be a positive number"])
+        raise PipelineSpecificationError([f"{field} must be a finite number"])
     try:
         number = float(value)
     except (TypeError, ValueError) as exc:
-        raise PipelineSpecificationError([f"{field} must be a positive number"]) from exc
-    if not math.isfinite(number) or number <= 0:
+        raise PipelineSpecificationError([f"{field} must be a finite number"]) from exc
+    if not math.isfinite(number):
+        raise PipelineSpecificationError([f"{field} must be a finite number"])
+    return number
+
+
+def _positive_number(value: Any, field: str) -> float:
+    number = _finite_number(value, field)
+    if number <= 0:
         raise PipelineSpecificationError([f"{field} must be a positive number"])
     return number
 
@@ -163,8 +170,8 @@ def generate_namelists(job: dict[str, Any], profile_id: str) -> dict[str, str]:
         raise PipelineSpecificationError([
             f"profile {profile_id} allows at most {profile['max_grid_points']} horizontal grid points"
         ])
-    center_lat = float(domain.get("center_lat"))
-    center_lon = float(domain.get("center_lon"))
+    center_lat = _finite_number(domain.get("center_lat"), "domain.center_lat")
+    center_lon = _finite_number(domain.get("center_lon"), "domain.center_lon")
     if not (-90 <= center_lat <= 90 and -180 <= center_lon <= 180):
         raise PipelineSpecificationError(["domain center coordinates are invalid"])
 
