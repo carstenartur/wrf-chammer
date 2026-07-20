@@ -108,21 +108,23 @@ class Era5CredentialValidationService:
         with self._lock:
             process = self._process
             job_id = self._active_job_id
-        if process is not None and process.poll() is None:
-            self._stop_process(process)
-            if job_id:
-                try:
-                    state = self._read_state(job_id)
+            if process is None or process.poll() is not None or not job_id:
+                return
+            try:
+                state = self._read_state(job_id)
+                if state.get("status") in _ACTIVE:
                     state.update(
                         status="CANCELLED",
                         finished_at=_utc_now(),
                         pid=None,
                         code="application_shutdown",
                         summary="Credential validation was cancelled because the Workbench stopped.",
+                        result=None,
                     )
                     self._write_state(state)
-                except Era5CredentialValidationError:
-                    pass
+            except Era5CredentialValidationError:
+                pass
+        self._stop_process(process)
 
     def status(self) -> dict[str, Any]:
         credential_status = self.data_service.credential_status()
@@ -173,27 +175,24 @@ class Era5CredentialValidationService:
             _atomic_json(self.root / "latest.json", {"job_id": job_id})
 
             result_path = job_directory / "result.json"
-            log_path = job_directory / "validator.log"
             command = [
                 sys.executable,
                 str(self.validator_path),
                 "--result",
                 str(result_path),
             ]
-            log_handle = log_path.open("a", encoding="utf-8")
             try:
                 process = subprocess.Popen(
                     command,
                     cwd=self.repo_root,
                     env=os.environ.copy(),
                     stdin=subprocess.DEVNULL,
-                    stdout=log_handle,
-                    stderr=subprocess.STDOUT,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
                     text=True,
                     start_new_session=(os.name == "posix"),
                 )
             except Exception as exc:
-                log_handle.close()
                 state.update(
                     status="FAILED",
                     finished_at=_utc_now(),
@@ -217,7 +216,7 @@ class Era5CredentialValidationService:
             self._active_job_id = job_id
             monitor = threading.Thread(
                 target=self._monitor,
-                args=(job_id, process, log_handle),
+                args=(job_id, process),
                 name=f"cds-validation-{job_id}",
                 daemon=True,
             )
@@ -228,7 +227,6 @@ class Era5CredentialValidationService:
         self,
         job_id: str,
         process: subprocess.Popen[str],
-        log_handle: Any,
     ) -> None:
         timed_out = False
         try:
@@ -237,11 +235,11 @@ class Era5CredentialValidationService:
             timed_out = True
             self._stop_process(process)
             return_code = process.wait()
-        finally:
-            log_handle.close()
 
         try:
             state = self._read_state(job_id)
+            if state.get("status") == "CANCELLED":
+                return
             if timed_out:
                 state.update(
                     status="FAILED",
@@ -273,6 +271,8 @@ class Era5CredentialValidationService:
         except Exception:
             try:
                 state = self._read_state(job_id)
+                if state.get("status") == "CANCELLED":
+                    return
                 state.update(
                     status="FAILED",
                     finished_at=_utc_now(),
