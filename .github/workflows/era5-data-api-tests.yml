@@ -4,18 +4,34 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
+      - 'ci/download-era5.py'
+      - 'workbench/era5_download_manager.py'
       - 'workbench/era5_service.py'
       - 'workbench/era5_planner.py'
       - 'workbench/server/application.py'
       - 'workbench/server/tests/test_era5_data_api.py'
+      - 'workbench/server/tests/test_era5_download_api.py'
+      - 'workbench/server/tests/test_era5_download_manager.py'
+      - 'workbench/ui/index.html'
+      - 'workbench/ui/public/era5-download-control.js'
+      - 'workbench/web/index.html'
+      - 'workbench/web/era5-download-control.js'
       - '.github/workflows/era5-data-api-tests.yml'
   push:
     branches: [master, develop]
     paths:
+      - 'ci/download-era5.py'
+      - 'workbench/era5_download_manager.py'
       - 'workbench/era5_service.py'
       - 'workbench/era5_planner.py'
       - 'workbench/server/application.py'
       - 'workbench/server/tests/test_era5_data_api.py'
+      - 'workbench/server/tests/test_era5_download_api.py'
+      - 'workbench/server/tests/test_era5_download_manager.py'
+      - 'workbench/ui/index.html'
+      - 'workbench/ui/public/era5-download-control.js'
+      - 'workbench/web/index.html'
+      - 'workbench/web/era5-download-control.js'
       - '.github/workflows/era5-data-api-tests.yml'
   workflow_dispatch:
 
@@ -28,22 +44,30 @@ concurrency:
 
 jobs:
   api-tests:
-    name: Credential-safe ERA5 planning API
+    name: Persistent credential-safe ERA5 data jobs
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run local ERA5 data API tests
+      - name: Run ERA5 planner and API tests
         shell: bash
         run: |
           LOG_FILE="${RUNNER_TEMP}/era5-data-api-tests.log"
-          if ! python3 workbench/server/tests/test_era5_data_api.py >"${LOG_FILE}" 2>&1; then
+          {
+            python3 workbench/server/tests/test_era5_data_api.py
+            python3 workbench/server/tests/test_era5_download_manager.py -v
+            python3 workbench/server/tests/test_era5_download_api.py
+          } >"${LOG_FILE}" 2>&1 || {
             cat "${LOG_FILE}"
             exit 1
-          fi
+          }
           cat "${LOG_FILE}"
+
+      - name: Verify browser download control syntax
+        shell: bash
+        run: node --check workbench/web/era5-download-control.js
 
       - name: Upload ERA5 API diagnostics
         if: always()
