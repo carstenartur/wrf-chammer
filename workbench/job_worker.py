@@ -19,6 +19,11 @@ from typing import Any, Callable
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from workbench.job_resources import (  # noqa: E402
+    JobResourceStore,
+    child_usage,
+    evaluate_admission,
+)
 from workbench.job_store import JobStore, JobStoreError  # noqa: E402
 
 DEFAULT_POLL_SECONDS = 1.0
@@ -41,7 +46,7 @@ def _sha256(path: Path) -> str:
 
 
 class JobWorker:
-    """Claim queued jobs, execute the existing runner, and persist events."""
+    """Claim queued jobs, run preflight, execute the runner, and persist events."""
 
     def __init__(
         self,
@@ -55,6 +60,7 @@ class JobWorker:
     ):
         self.repo_root = repo_root.resolve()
         self.store = store
+        self.resources = JobResourceStore(store.database_path)
         self.worker_id = worker_id or f"{socket.gethostname()}-{os.getpid()}-{uuid.uuid4().hex[:8]}"
         self.poll_seconds = max(0.05, float(poll_seconds))
         self.cancel_grace_seconds = max(0.1, float(cancel_grace_seconds))
@@ -71,8 +77,6 @@ class JobWorker:
         active_workers = self.store.live_worker_ids(
             max_age_seconds=max(30.0, self.poll_seconds * 10)
         )
-        # A restarted worker may deliberately reuse its stable id. Its new
-        # heartbeat must not make jobs owned by the previous process look alive.
         active_workers.discard(self.worker_id)
         return self.store.recover_orphaned_jobs(active_workers)
 
@@ -116,6 +120,65 @@ class JobWorker:
         return config
 
     def execute(self, job: dict[str, Any]) -> dict[str, Any]:
+        job_id = str(job["job_id"])
+        attempt = int(job["attempt"])
+        admission = evaluate_admission(job["config"], self.repo_root)
+        self.resources.capture_snapshot(
+            job_id,
+            attempt,
+            "preflight",
+            self.repo_root,
+            worker_id=self.worker_id,
+            details=admission,
+        )
+        if not admission["admitted"]:
+            self.resources.add_measurement(
+                job_id,
+                attempt,
+                "admission_rejected",
+                1,
+                "boolean",
+                details={"reasons": admission["reasons"]},
+            )
+            return self.store.complete(
+                job_id,
+                state="FAILED",
+                exit_code=None,
+                log_path=None,
+                error_code="INSUFFICIENT_RESOURCES",
+                error_message="The local resource preflight rejected this job.",
+            )
+
+        before_usage = child_usage()
+        started = time.monotonic()
+        result: dict[str, Any] | None = None
+        try:
+            result = self._execute_admitted(job)
+            return result
+        finally:
+            after_usage = child_usage()
+            elapsed = max(0.0, time.monotonic() - started)
+            exit_code = None
+            if result and result.get("steps"):
+                exit_code = result["steps"][-1].get("exit_code")
+            self.resources.record_usage_delta(
+                job_id,
+                attempt,
+                before_usage,
+                after_usage,
+                elapsed,
+                exit_code=exit_code,
+            )
+            self.resources.capture_snapshot(
+                job_id,
+                attempt,
+                "finished",
+                self.repo_root,
+                worker_id=self.worker_id,
+                details={"state": result.get("state") if result else "FAILED"},
+            )
+
+    def _execute_admitted(self, job: dict[str, Any]) -> dict[str, Any]:
         job_id = str(job["job_id"])
         attempt_dir = self._attempt_directory(job)
         logs_dir = attempt_dir / "logs"
