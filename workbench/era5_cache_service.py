@@ -58,6 +58,7 @@ class Era5CacheService:
         if not self.cache_root.is_dir():
             return []
         entries: list[dict[str, Any]] = []
+        downloads_snapshot = self.download_manager.list()
         try:
             candidates = sorted(self.cache_root.iterdir(), key=lambda path: path.name)
         except OSError:
@@ -66,22 +67,37 @@ class Era5CacheService:
             if not _PLAN_KEY_RE.fullmatch(candidate.name):
                 continue
             try:
-                entries.append(self.detail(candidate.name))
+                entries.append(
+                    self.detail(
+                        candidate.name,
+                        downloads_snapshot=downloads_snapshot,
+                    )
+                )
             except Era5CacheServiceError as exc:
                 entries.append(self._invalid_entry(candidate.name, exc.message))
         entries.sort(key=lambda entry: str(entry.get("last_used_at") or ""), reverse=True)
         return entries
 
-    def detail(self, plan_key: str) -> dict[str, Any]:
+    def detail(
+        self,
+        plan_key: str,
+        *,
+        downloads_snapshot: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         plan_directory = self._canonical_plan_directory(plan_key)
         try:
             plan = self.data_service.load_prepared_plan(plan_key)
         except Era5DataServiceError as exc:
             raise Era5CacheServiceError("cache_entry_invalid", exc.message) from exc
 
+        all_downloads = (
+            downloads_snapshot
+            if downloads_snapshot is not None
+            else self.download_manager.list()
+        )
         downloads = [
             self._download_dependency(job)
-            for job in self.download_manager.list()
+            for job in all_downloads
             if job.get("plan_key") == plan_key
         ]
         downloads.sort(key=lambda job: str(job.get("created_at") or ""), reverse=True)
