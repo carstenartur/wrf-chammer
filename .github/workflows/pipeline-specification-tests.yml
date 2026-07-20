@@ -43,7 +43,29 @@ jobs:
             workbench/pipeline_specification_service.py
 
       - name: Test deterministic identities and namelists
-        run: python3 workbench/server/tests/test_pipeline_specification.py -v
+        shell: bash
+        run: |
+          python3 workbench/server/tests/test_pipeline_specification.py -v \
+            > "${RUNNER_TEMP}/pipeline-identity-tests.log" 2>&1 || {
+              cat "${RUNNER_TEMP}/pipeline-identity-tests.log"
+              exit 1
+            }
+          cat "${RUNNER_TEMP}/pipeline-identity-tests.log"
 
       - name: Test immutable specification persistence
-        run: python3 workbench/server/tests/test_pipeline_specification_service.py -v
+        shell: bash
+        run: |
+          python3 workbench/server/tests/test_pipeline_specification_service.py -v \
+            > "${RUNNER_TEMP}/pipeline-service-tests.log" 2>&1 || {
+              cat "${RUNNER_TEMP}/pipeline-service-tests.log"
+              exit 1
+            }
+          cat "${RUNNER_TEMP}/pipeline-service-tests.log"
+
+      - name: Upload focused test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-pipeline-specification-test-logs
+          path: ${{ runner.temp }}/pipeline-*-tests.log
+          if-no-files-found: ignore
