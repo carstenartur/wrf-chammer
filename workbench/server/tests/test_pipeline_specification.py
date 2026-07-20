@@ -83,6 +83,24 @@ class PipelineSpecificationTests(unittest.TestCase):
         self.assertIn("start_date = '2013-12-05_12:00:00'", namelists["namelist.wps"])
         self.assertIn("end_date   = '2013-12-05_18:30:00'", namelists["namelist.wps"])
 
+    def test_non_utc_timestamp_is_rejected(self) -> None:
+        job = {
+            **JOB,
+            "period": {
+                "start": "2013-12-05T13:00:00+01:00",
+                "end": "2013-12-05T18:30:00Z",
+            },
+        }
+        with self.assertRaises(PipelineSpecificationError) as context:
+            generate_namelists(job, "small-real-data-demo")
+        self.assertIn("must use the UTC offset", str(context.exception))
+
+    def test_invalid_center_coordinate_has_classified_error(self) -> None:
+        job = {**JOB, "domain": {**JOB["domain"], "center_lat": "north"}}
+        with self.assertRaises(PipelineSpecificationError) as context:
+            generate_namelists(job, "small-real-data-demo")
+        self.assertIn("domain.center_lat", str(context.exception))
+
     def test_identity_is_stable_and_contains_eight_step_contracts(self) -> None:
         first, first_namelists = build_run_specification_identity(
             job=JOB,
