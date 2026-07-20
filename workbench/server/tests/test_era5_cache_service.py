@@ -111,6 +111,28 @@ class Era5CacheServiceTests(unittest.TestCase):
             finally:
                 manager.close()
 
+    def test_list_entries_scans_download_jobs_once(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="era5-cache-snapshot-") as temporary:
+            service = Era5DataService(REPO_ROOT, Path(temporary) / "cache")
+            manager = CacheCoordinatedEra5DownloadManager(REPO_ROOT, service)
+            try:
+                write_plan(service, "4" * 64)
+                write_plan(service, "5" * 64)
+                original_list = manager.list
+                calls = 0
+
+                def counted_list() -> list[dict]:
+                    nonlocal calls
+                    calls += 1
+                    return original_list()
+
+                manager.list = counted_list  # type: ignore[method-assign]
+                entries = Era5CacheService(service, manager).list_entries()
+                self.assertEqual(2, len(entries))
+                self.assertEqual(1, calls)
+            finally:
+                manager.close()
+
     def test_active_download_blocks_deletion(self) -> None:
         with tempfile.TemporaryDirectory(prefix="era5-cache-active-") as temporary:
             service = Era5DataService(REPO_ROOT, Path(temporary) / "cache")
