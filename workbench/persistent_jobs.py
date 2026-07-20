@@ -9,6 +9,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from workbench.job_resources import JobResourceStore
 from workbench.job_store import JobConflictError, JobNotFoundError, JobStore
 
 JOB_ID_RE = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
@@ -47,6 +48,7 @@ class PersistentJobService:
             self.repo_root, configured_database, "persistent job database"
         )
         self.store = JobStore(self.database_path)
+        self.resource_store = JobResourceStore(self.database_path)
 
     def exists(self, job_id: str) -> bool:
         return self.store.exists(job_id)
@@ -87,6 +89,10 @@ class PersistentJobService:
 
     def artifacts(self, job_id: str) -> list[dict[str, Any]]:
         return self.store.artifacts(job_id)
+
+    def resources(self, job_id: str) -> dict[str, Any]:
+        self.store.get_job(job_id)
+        return self.resource_store.resources(job_id)
 
 
 __all__ = ["JobConflictError", "JobNotFoundError", "PersistentJobService"]
