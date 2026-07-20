@@ -12,6 +12,7 @@ on:
       - 'workbench/server/tests/test_era5_data_api.py'
       - 'workbench/server/tests/test_era5_download_api.py'
       - 'workbench/server/tests/test_era5_download_manager.py'
+      - 'workbench/server/tests/test_era5_download_path_security.py'
       - 'workbench/ui/index.html'
       - 'workbench/ui/public/era5-download-control.js'
       - 'workbench/web/index.html'
@@ -28,6 +29,7 @@ on:
       - 'workbench/server/tests/test_era5_data_api.py'
       - 'workbench/server/tests/test_era5_download_api.py'
       - 'workbench/server/tests/test_era5_download_manager.py'
+      - 'workbench/server/tests/test_era5_download_path_security.py'
       - 'workbench/ui/index.html'
       - 'workbench/ui/public/era5-download-control.js'
       - 'workbench/web/index.html'
@@ -58,6 +60,7 @@ jobs:
           {
             python3 workbench/server/tests/test_era5_data_api.py
             python3 workbench/server/tests/test_era5_download_manager.py -v
+            python3 workbench/server/tests/test_era5_download_path_security.py -v
             python3 workbench/server/tests/test_era5_download_api.py
           } >"${LOG_FILE}" 2>&1 || {
             cat "${LOG_FILE}"
