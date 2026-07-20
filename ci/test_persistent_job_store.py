@@ -3,13 +3,17 @@
 
 from __future__ import annotations
 
+import sys
 import tempfile
 import threading
 import time
 from pathlib import Path
 
-from workbench.job_store import JobConflictError, JobStore
-from workbench.job_worker import JobWorker
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
+
+from workbench.job_store import JobConflictError, JobStore  # noqa: E402
+from workbench.job_worker import JobWorker  # noqa: E402
 
 
 def make_repo(root: Path, script: str) -> Path:
