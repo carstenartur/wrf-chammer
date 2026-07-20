@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from workbench.era5_service import Era5DataService
+from workbench.era5_service import Era5DataService, Era5DataServiceError
 
 _ACTIVE_STATUSES = {"QUEUED", "RUNNING", "CANCELLING"}
 _TERMINAL_STATUSES = {"SUCCEEDED", "FAILED", "CANCELLED"}
@@ -190,8 +190,8 @@ class Era5DownloadManager:
         return jobs
 
     def events(self, job_id: str) -> list[dict[str, Any]]:
-        state = self._read_state(job_id)
-        events_path = self._job_directory(state["plan_key"], job_id) / "events.jsonl"
+        _state, state_path = self._locate_state(job_id)
+        events_path = state_path.parent / "events.jsonl"
         events: list[dict[str, Any]] = []
         if not events_path.is_file():
             return events
@@ -590,13 +590,45 @@ class Era5DownloadManager:
         public["cancellable"] = state.get("status") in _ACTIVE_STATUSES
         return public
 
-    def _read_state(self, job_id: str) -> dict[str, Any]:
+    def _locate_state(self, job_id: str) -> tuple[dict[str, Any], Path]:
         if not isinstance(job_id, str) or not _DOWNLOAD_ID_RE.fullmatch(job_id):
             raise Era5DownloadManagerError("download_not_found", "ERA5 download job not found.")
-        matches = list(self.cache_root.glob(f"*/downloads/{job_id}/state.json"))
-        if len(matches) != 1:
+
+        located: tuple[dict[str, Any], Path] | None = None
+        for state_path in self.cache_root.glob("*/downloads/*/state.json"):
+            try:
+                state = _load_json(state_path)
+            except Era5DownloadManagerError:
+                continue
+            if state.get("id") != job_id:
+                continue
+            plan_key = state.get("plan_key")
+            if not isinstance(plan_key, str):
+                continue
+            try:
+                plan_directory = self.data_service.plan_directory(plan_key).resolve()
+            except Era5DataServiceError:
+                continue
+            resolved_state_path = state_path.resolve()
+            expected_downloads = (plan_directory / "downloads").resolve()
+            if resolved_state_path.parent.parent != expected_downloads:
+                continue
+            if resolved_state_path.parent.name != job_id:
+                continue
+            if located is not None:
+                raise Era5DownloadManagerError(
+                    "download_state_invalid",
+                    "Multiple stored ERA5 download states use the same job ID.",
+                )
+            located = (state, resolved_state_path)
+
+        if located is None:
             raise Era5DownloadManagerError("download_not_found", "ERA5 download job not found.")
-        return _load_json(matches[0])
+        return located
+
+    def _read_state(self, job_id: str) -> dict[str, Any]:
+        state, _state_path = self._locate_state(job_id)
+        return state
 
     def _write_state(self, state: dict[str, Any]) -> None:
         path = self._job_directory(state["plan_key"], state["id"]) / "state.json"
@@ -624,7 +656,14 @@ class Era5DownloadManager:
             os.fsync(handle.fileno())
 
     def _job_directory(self, plan_key: str, job_id: str) -> Path:
-        return self.data_service.plan_directory(plan_key) / "downloads" / job_id
+        plan_directory = self.data_service.plan_directory(plan_key).resolve()
+        if not isinstance(job_id, str) or not _DOWNLOAD_ID_RE.fullmatch(job_id):
+            raise Era5DownloadManagerError("download_not_found", "ERA5 download job not found.")
+        downloads_directory = (plan_directory / "downloads").resolve()
+        job_directory = (downloads_directory / job_id).resolve()
+        if job_directory.parent != downloads_directory:
+            raise Era5DownloadManagerError("download_not_found", "ERA5 download job not found.")
+        return job_directory
 
     def _display_job_path(self, plan_key: str, job_id: str, filename: str) -> str:
         base = self.data_service.display_plan_path(plan_key, f"downloads/{job_id}/{filename}")
