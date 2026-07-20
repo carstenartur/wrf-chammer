@@ -33,7 +33,8 @@ http://127.0.0.1:8080/
 ```
 
 The start screen shows system readiness, guided map planning, ERA5 input-data
-planning, event search, preset selection, job preview and status/log panels.
+planning and download jobs, event search, preset selection, job preview and
+status/log panels.
 
 ![Xaver search screen](user-guide/screenshots/xaver-01-search.png)
 
@@ -54,7 +55,8 @@ GET /api/events/xaver
 ## 3. Choose the simulation domain and real input data
 
 There are two supported domain-planning paths. The guided path additionally
-connects the validated area and period to a reproducible ERA5 request plan.
+connects the validated area and period to a reproducible ERA5 request plan and a
+persistent downloader job.
 
 ### 3.1 Guided map planning
 
@@ -137,23 +139,60 @@ Artificial weather data: no
 ![Xaver ERA5 request plan with cache and provenance information](user-guide/screenshots/xaver-03c-era5-data-plan.png)
 
 Select `Prepare download files` to atomically write the reproducible plan and the
-existing downloader configuration format into the managed cache:
+downloader configuration into the managed cache:
 
 ```text
 .era5-cache/<plan-key>/era5-plan.json
+.era5-cache/<plan-key>/request.json
 .era5-cache/<plan-key>/era5-download-config.json
 ```
 
-This operation performs no CDS request. The UI and API return
-`download_started: false`. Network download, progress, cancellation and retry are
-separate asynchronous-worker functions and are not implied by planning or preparing
-these files.
+This preparation operation performs no CDS request and returns
+`download_started: false`.
 
-For the API, security and cache details, see
+### 3.3 Download and verify real ERA5 files
+
+The separate **Download and verify real ERA5 files** control starts the network
+operation explicitly. Select `Start real ERA5 download` after reviewing the plan.
+The browser calls:
+
+```http
+POST /api/data/era5/downloads
+```
+
+The response is a persistent job record. The downloader runs in a separate process,
+so the HTTP request does not remain open for the duration of the transfer. The UI
+shows:
+
+- `QUEUED`, `RUNNING`, `CANCELLING`, `CANCELLED`, `FAILED` or `SUCCEEDED`;
+- completed and total requests;
+- the current request and retry attempt;
+- recent structured state events;
+- whether cancel or retry is currently allowed.
+
+The browser may be reloaded or closed. Use `Cancel safely` to stop a running process
+without misclassifying it as failed, or `Retry with cache reuse` after failure or
+cancellation. Files completed before the interruption remain in the content-addressed
+cache and are verified instead of downloaded again.
+
+A complete cache can be verified without CDS credentials. Missing files require a
+local `CDSAPI_KEY` or `.cdsapirc`; secret values never enter browser responses,
+job JSON or process command arguments.
+
+After successful verification the plan directory also contains:
+
+```text
+.era5-cache/<plan-key>/checksums.json
+.era5-cache/<plan-key>/provenance.json
+.era5-cache/<plan-key>/files/...
+.era5-cache/<plan-key>/downloads/<download-id>/era5-manifest.json
+```
+
+For the API, integrity, security and recovery details, see
 [`ERA5_DATA_UI.md`](ERA5_DATA_UI.md) and
 [`ERA5_DATA_PLANNING.md`](ERA5_DATA_PLANNING.md).
 
-### 3.3 Curated presets
+### 3.4 Curated presets
 
 The existing preset path remains available. Select a domain and a resolution
 preset. It is useful for tested reference configurations and quick demonstrations.
@@ -240,8 +279,8 @@ map image.
 
 ## 8. Run the cached ERA5-WRF acceptance path
 
-The browser UI currently drives planning and dry-run execution. The cacheable
-ERA5-WRF path is covered by the Xaver acceptance script:
+The browser UI now drives planning and ERA5 acquisition. The cacheable ERA5-WRF
+path is covered by the Xaver acceptance script:
 
 ```bash
 sh ci/test-xaver-demo.sh

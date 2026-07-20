@@ -8,6 +8,7 @@ cache paths to API consumers.
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import re
@@ -73,6 +74,16 @@ def _nearest_existing_parent(path: Path) -> Path:
     return candidate
 
 
+def _read_json_object(path: Path, code: str, message: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise Era5DataServiceError(code, message) from exc
+    if not isinstance(payload, dict):
+        raise Era5DataServiceError(code, message)
+    return payload
+
+
 class Era5DataService:
     """Plan real ERA5 input and manage content-addressed request files."""
 
@@ -92,6 +103,18 @@ class Era5DataService:
             return str(self.cache_root.relative_to(self.repo_root)) or "."
         except ValueError:
             return "configured-external-cache"
+
+    def plan_directory(self, plan_key: str) -> Path:
+        if not isinstance(plan_key, str) or not _CACHE_KEY_RE.fullmatch(plan_key):
+            raise Era5DataServiceError("plan_not_found", "ERA5 plan not found.")
+        return self.cache_root / plan_key
+
+    def display_plan_path(self, plan_key: str, relative_path: str) -> str:
+        self.plan_directory(plan_key)
+        relative = Path(relative_path)
+        if relative.is_absolute() or ".." in relative.parts:
+            raise Era5DataServiceError("unsafe_cache_path", "ERA5 cache path is invalid.")
+        return f"{self.display_cache_root()}/{plan_key}/{relative.as_posix()}"
 
     @staticmethod
     def credential_status() -> dict[str, Any]:
@@ -214,17 +237,111 @@ class Era5DataService:
         latest_preview: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         plan = self.plan(request, latest_preview)
-        plan_directory = self.cache_root / plan["plan_key"]
+        plan_directory = self.plan_directory(plan["plan_key"])
         _atomic_json(plan_directory / "era5-plan.json", plan)
+        _atomic_json(plan_directory / "request.json", plan["download_config"])
         _atomic_json(plan_directory / "era5-download-config.json", plan["download_config"])
 
-        display_root = self.display_cache_root()
         return {
             "ok": True,
             "plan": plan,
             "prepared": {
-                "plan": f"{display_root}/{plan['plan_key']}/era5-plan.json",
-                "download_config": f"{display_root}/{plan['plan_key']}/era5-download-config.json",
+                "plan": self.display_plan_path(plan["plan_key"], "era5-plan.json"),
+                "download_config": self.display_plan_path(plan["plan_key"], "era5-download-config.json"),
                 "download_started": False,
             },
         }
+
+    def load_download_config(self, plan_key: str) -> dict[str, Any]:
+        config = _read_json_object(
+            self.plan_directory(plan_key) / "era5-download-config.json",
+            "plan_not_prepared",
+            "The ERA5 download configuration has not been prepared.",
+        )
+        requests = config.get("requests")
+        if not isinstance(requests, dict) or not requests:
+            raise Era5DataServiceError(
+                "plan_not_prepared", "The prepared ERA5 download configuration is invalid."
+            )
+        return config
+
+    def load_prepared_plan(self, plan_key: str, *, persist_refresh: bool = False) -> dict[str, Any]:
+        plan = _read_json_object(
+            self.plan_directory(plan_key) / "era5-plan.json",
+            "plan_not_prepared",
+            "The ERA5 plan has not been prepared.",
+        )
+        if plan.get("plan_key") != plan_key:
+            raise Era5DataServiceError("plan_not_prepared", "The prepared ERA5 plan is invalid.")
+        refreshed = self._refresh_cache_state(plan)
+        if persist_refresh:
+            _atomic_json(self.plan_directory(plan_key) / "era5-plan.json", refreshed)
+        return refreshed
+
+    def requires_credentials(self, plan_key: str) -> bool:
+        config = self.load_download_config(plan_key)
+        plan_directory = self.plan_directory(plan_key).resolve()
+        for request in config["requests"].values():
+            if not isinstance(request, dict):
+                return True
+            target = self._safe_target(plan_directory, request.get("target"))
+            if not target.is_file() or target.stat().st_size <= 0:
+                return True
+        return False
+
+    def _refresh_cache_state(self, plan: dict[str, Any]) -> dict[str, Any]:
+        refreshed = copy.deepcopy(plan)
+        plan_key = refreshed.get("plan_key")
+        plan_directory = self.plan_directory(plan_key)
+        requests = refreshed.get("requests")
+        if not isinstance(requests, list) or not requests:
+            raise Era5DataServiceError("plan_not_prepared", "The prepared ERA5 plan is invalid.")
+
+        entries: list[dict[str, Any]] = []
+        hits = 0
+        partials = 0
+        for request in requests:
+            if not isinstance(request, dict):
+                raise Era5DataServiceError("plan_not_prepared", "The prepared ERA5 plan is invalid.")
+            target = self._safe_target(plan_directory, request.get("target"))
+            present = target.is_file() and target.stat().st_size > 0
+            partial = target.with_name(target.name + ".part").exists() and not present
+            hits += int(present)
+            partials += int(partial)
+            entries.append({
+                "name": request.get("name"),
+                "request_key": request.get("request_key"),
+                "target": request.get("target"),
+                "present": present,
+                "partial": partial,
+                "size_bytes": target.stat().st_size if present else 0,
+            })
+
+        total = len(entries)
+        status = "complete" if hits == total else "partial" if hits or partials else "missing"
+        cache = refreshed.setdefault("cache", {})
+        if not isinstance(cache, dict):
+            raise Era5DataServiceError("plan_not_prepared", "The prepared ERA5 plan is invalid.")
+        cache.update({
+            "root": self.display_cache_root(),
+            "plan_directory": f"{self.display_cache_root()}/{plan_key}",
+            "status": status,
+            "hits": hits,
+            "partial_entries": partials,
+            "total": total,
+            "coverage_percent": round(hits * 100 / total, 1),
+            "entries": entries,
+        })
+        return refreshed
+
+    @staticmethod
+    def _safe_target(plan_directory: Path, target_name: Any) -> Path:
+        if not isinstance(target_name, str) or not target_name.strip():
+            raise Era5DataServiceError("plan_not_prepared", "The prepared ERA5 target is invalid.")
+        relative = Path(target_name)
+        if relative.is_absolute() or ".." in relative.parts:
+            raise Era5DataServiceError("plan_not_prepared", "The prepared ERA5 target is unsafe.")
+        target = (plan_directory / relative).resolve()
+        if target != plan_directory and plan_directory not in target.parents:
+            raise Era5DataServiceError("plan_not_prepared", "The prepared ERA5 target is unsafe.")
+        return target
