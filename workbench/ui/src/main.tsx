@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { Era5DataPanel } from './features/data/Era5DataPanel';
+import { JobQueueLauncher } from './features/jobs/JobQueueLauncher';
 import { JobQueuePanel } from './features/jobs/JobQueuePanel';
 import { SimulationWizard } from './features/simulation/SimulationWizard';
 import { SystemReadiness } from './features/system/SystemReadiness';
@@ -20,6 +21,7 @@ createRoot(root).render(
     React.createElement(SystemReadiness),
     React.createElement(SimulationWizard),
     React.createElement(Era5DataPanel),
+    React.createElement(JobQueueLauncher),
     React.createElement(JobQueuePanel),
     React.createElement(App),
   ),
