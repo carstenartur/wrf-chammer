@@ -1,0 +1,86 @@
+name: Real Pipeline Specification Tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'workbench/pipeline_specification.py'
+      - 'workbench/pipeline_specification_service.py'
+      - 'workbench/server/tests/test_pipeline_specification.py'
+      - 'workbench/server/tests/test_pipeline_specification_service.py'
+      - 'workbench/server/tests/test_pipeline_specification_path_security.py'
+      - 'doc/REAL_PIPELINE_SPECIFICATION.md'
+      - '.github/workflows/pipeline-specification-tests.yml'
+  push:
+    branches: [master, develop]
+    paths:
+      - 'workbench/pipeline_specification.py'
+      - 'workbench/pipeline_specification_service.py'
+      - 'workbench/server/tests/test_pipeline_specification.py'
+      - 'workbench/server/tests/test_pipeline_specification_service.py'
+      - 'workbench/server/tests/test_pipeline_specification_path_security.py'
+      - 'doc/REAL_PIPELINE_SPECIFICATION.md'
+      - '.github/workflows/pipeline-specification-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .
+
+concurrency:
+  group: real-pipeline-specification-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  specification-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify Python syntax
+        run: |
+          python3 -m py_compile \
+            workbench/pipeline_specification.py \
+            workbench/pipeline_specification_service.py
+
+      - name: Test deterministic identities and namelists
+        shell: bash
+        run: |
+          python3 workbench/server/tests/test_pipeline_specification.py -v \
+            > "${RUNNER_TEMP}/pipeline-identity-tests.log" 2>&1 || {
+              cat "${RUNNER_TEMP}/pipeline-identity-tests.log"
+              exit 1
+            }
+          cat "${RUNNER_TEMP}/pipeline-identity-tests.log"
+
+      - name: Test immutable specification persistence
+        shell: bash
+        run: |
+          python3 workbench/server/tests/test_pipeline_specification_service.py -v \
+            > "${RUNNER_TEMP}/pipeline-service-tests.log" 2>&1 || {
+              cat "${RUNNER_TEMP}/pipeline-service-tests.log"
+              exit 1
+            }
+          cat "${RUNNER_TEMP}/pipeline-service-tests.log"
+
+      - name: Test specification path integrity
+        shell: bash
+        run: |
+          python3 workbench/server/tests/test_pipeline_specification_path_security.py -v \
+            > "${RUNNER_TEMP}/pipeline-path-tests.log" 2>&1 || {
+              cat "${RUNNER_TEMP}/pipeline-path-tests.log"
+              exit 1
+            }
+          cat "${RUNNER_TEMP}/pipeline-path-tests.log"
+
+      - name: Upload focused test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-pipeline-specification-test-logs
+          path: ${{ runner.temp }}/pipeline-*-tests.log
+          if-no-files-found: ignore
