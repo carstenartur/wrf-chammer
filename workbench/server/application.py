@@ -30,6 +30,10 @@ from workbench.era5_cache_service import (  # noqa: E402
     Era5CacheService,
     Era5CacheServiceError,
 )
+from workbench.era5_credential_service import (  # noqa: E402
+    Era5CredentialValidationError,
+    Era5CredentialValidationService,
+)
 from workbench.era5_download_manager import (  # noqa: E402
     Era5DownloadManager,
     Era5DownloadManagerError,
@@ -41,19 +45,21 @@ from workbench.server.server import ApiError, WorkbenchApiHandler, WorkbenchApiS
 
 _ERA5_DOWNLOADS_PATH = "/api/data/era5/downloads"
 _ERA5_CACHE_PATH = "/api/data/era5/cache"
+_ERA5_CREDENTIAL_STATUS_PATH = "/api/data/era5/credentials/validation"
+_ERA5_CREDENTIAL_VALIDATE_PATH = "/api/data/era5/credentials/validate"
 
 
 class WorkbenchApplicationHandler(WorkbenchApiHandler):
     def _handle_static_path(self, path: str) -> bool:
-        if path == "/web/era5-download-control.js":
+        static_scripts = {
+            "/web/era5-download-control.js": "era5-download-control.js",
+            "/web/era5-cache-management.js": "era5-cache-management.js",
+            "/web/era5-credential-validation.js": "era5-credential-validation.js",
+        }
+        filename = static_scripts.get(path)
+        if filename:
             self._send_static_file(
-                self.server.web_dir / "era5-download-control.js",
-                "application/javascript; charset=utf-8",
-            )
-            return True
-        if path == "/web/era5-cache-management.js":
-            self._send_static_file(
-                self.server.web_dir / "era5-cache-management.js",
+                self.server.web_dir / filename,
                 "application/javascript; charset=utf-8",
             )
             return True
@@ -88,6 +94,15 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
             self.server.era5_cache_service = service
         return service
 
+    def _era5_credential_service(self) -> Era5CredentialValidationService:
+        service = getattr(self.server, "era5_credential_validation_service", None)
+        if not isinstance(service, Era5CredentialValidationService):
+            service = Era5CredentialValidationService(
+                self.server.repo_root, self._era5_service()
+            )
+            self.server.era5_credential_validation_service = service
+        return service
+
     def _latest_wizard_preview(self) -> dict[str, Any] | None:
         preview = getattr(self.server, "latest_wizard_preview", None)
         return preview if isinstance(preview, dict) else None
@@ -101,6 +116,7 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
             "/api/data/era5/status",
             _ERA5_DOWNLOADS_PATH,
             _ERA5_CACHE_PATH,
+            _ERA5_CREDENTIAL_STATUS_PATH,
         }
         dynamic_supported = path.startswith(f"{_ERA5_DOWNLOADS_PATH}/") or path.startswith(
             f"{_ERA5_CACHE_PATH}/"
@@ -119,6 +135,8 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
                 payload = {"ok": True, "available": latest is not None, "preview": latest}
             elif path == "/api/data/era5/status":
                 payload = self._era5_service().status(self._latest_wizard_preview())
+            elif path == _ERA5_CREDENTIAL_STATUS_PATH:
+                payload = self._era5_credential_service().status()
             elif path == _ERA5_DOWNLOADS_PATH:
                 downloads = self._era5_download_manager().list()
                 payload = {"ok": True, "count": len(downloads), "downloads": downloads}
@@ -131,6 +149,8 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
             else:
                 payload = self._handle_get_era5_download(path)
             self._send_json(HTTPStatus.OK, payload)
+        except Era5CredentialValidationError as exc:
+            self._send_credential_error(exc)
         except Era5CacheServiceError as exc:
             self._send_cache_error(exc)
         except Era5DownloadManagerError as exc:
@@ -150,6 +170,7 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
             "/api/data/era5/plan",
             "/api/data/era5/prepare",
             _ERA5_DOWNLOADS_PATH,
+            _ERA5_CREDENTIAL_VALIDATE_PATH,
         }
         is_download_action = path.startswith(f"{_ERA5_DOWNLOADS_PATH}/") and (
             path.endswith("/cancel") or path.endswith("/retry")
@@ -175,6 +196,9 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
             elif path == "/api/data/era5/prepare":
                 payload = self._era5_service().prepare(request, self._latest_wizard_preview())
                 status = HTTPStatus.OK
+            elif path == _ERA5_CREDENTIAL_VALIDATE_PATH:
+                payload = {"ok": True, "validation": self._era5_credential_service().start()}
+                status = HTTPStatus.ACCEPTED
             elif path == _ERA5_DOWNLOADS_PATH:
                 download = self._era5_download_manager().start(
                     request, self._latest_wizard_preview()
@@ -196,6 +220,8 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
                 HTTPStatus.UNPROCESSABLE_ENTITY,
                 {"ok": False, "valid": False, "errors": exc.errors},
             )
+        except Era5CredentialValidationError as exc:
+            self._send_credential_error(exc)
         except Era5CacheServiceError as exc:
             self._send_cache_error(exc)
         except Era5DownloadManagerError as exc:
@@ -232,6 +258,15 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
         else:  # guarded by do_POST
             raise Era5DownloadManagerError("download_not_found", "ERA5 download job not found.")
         return {"ok": True, "download": download}
+
+    def _send_credential_error(self, exc: Era5CredentialValidationError) -> None:
+        if exc.code in {"credentials_not_configured", "validation_in_progress"}:
+            status = HTTPStatus.CONFLICT
+        elif exc.code == "validation_not_found":
+            status = HTTPStatus.NOT_FOUND
+        else:
+            status = HTTPStatus.INTERNAL_SERVER_ERROR
+        self._send_error(status, exc.code, exc.message)
 
     def _send_cache_error(self, exc: Era5CacheServiceError) -> None:
         if exc.code == "cache_entry_not_found":
@@ -344,6 +379,9 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         pass
     finally:
+        credential_service = getattr(server, "era5_credential_validation_service", None)
+        if isinstance(credential_service, Era5CredentialValidationService):
+            credential_service.close()
         manager = getattr(server, "era5_download_manager", None)
         if isinstance(manager, Era5DownloadManager):
             manager.close()
