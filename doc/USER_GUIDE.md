@@ -33,8 +33,8 @@ http://127.0.0.1:8080/
 ```
 
 The start screen shows system readiness, guided map planning, ERA5 input-data
-planning and download jobs, event search, preset selection, job preview and
-status/log panels.
+planning, persistent download jobs and managed-cache administration, followed by
+event search, preset selection, job preview and status/log panels.
 
 ![Xaver search screen](user-guide/screenshots/xaver-01-search.png)
 
@@ -192,7 +192,56 @@ For the API, integrity, security and recovery details, see
 [`ERA5_DATA_UI.md`](ERA5_DATA_UI.md) and
 [`ERA5_DATA_PLANNING.md`](ERA5_DATA_PLANNING.md).
 
-### 3.4 Curated presets
+### 3.4 Inspect and clean the managed ERA5 cache
+
+The **Managed ERA5 cache** section is a global administration view. It lists each
+content-addressed plan and shows:
+
+- stored bytes and regular-file count;
+- request coverage and partial entries;
+- simulation period and domain bounds;
+- source, datasets and checksum/provenance availability;
+- creation, modification and last-use timestamps;
+- persistent ERA5 download jobs stored below the plan;
+- how many of those jobs are still active;
+- whether deletion is currently allowed.
+
+Select `Refresh cache` before cleanup. The browser reads:
+
+```http
+GET /api/data/era5/cache
+GET /api/data/era5/cache/{plan-key}
+```
+
+`Delete cache entry` remains disabled while a dependent download job is `QUEUED`,
+`RUNNING` or `CANCELLING`. For an unused plan, the confirmation dialog names the
+plan key, released storage and number of persistent download-job records that will
+be removed. The deletion request includes the exact dependency snapshot most
+recently shown by the server:
+
+```http
+POST /api/data/era5/cache/{plan-key}/delete
+Content-Type: application/json
+
+{
+  "confirm_plan_key": "<same plan key>",
+  "dependent_job_ids": ["<exact IDs from the detail response>"]
+}
+```
+
+If a job was added or changed after the page was loaded, deletion is rejected and
+the view must be refreshed. Symlinked or non-canonical directories are never
+followed by the managed deletion path. A successful deletion is recorded without
+host paths or credentials in `.era5-cache/.audit/cache-events.jsonl`.
+
+At this stage the dependency warning covers persistent ERA5 download jobs. Later
+WPS/WRF simulation jobs are not yet represented as `InputDataset` references; that
+additional protection belongs to issue #46 and is not silently implied by this UI.
+
+See [`ERA5_CACHE_MANAGEMENT.md`](ERA5_CACHE_MANAGEMENT.md) for the complete safety
+and recovery contract.
+
+### 3.5 Curated presets
 
 The existing preset path remains available. Select a domain and a resolution
 preset. It is useful for tested reference configurations and quick demonstrations.
