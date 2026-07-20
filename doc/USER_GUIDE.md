@@ -26,6 +26,14 @@ python3 wrf-chammer doctor
 python3 wrf-chammer start
 ```
 
+`start` launches both the local API/UI and the persistent job worker. Inspect the
+managed processes with:
+
+```bash
+python3 wrf-chammer status --json
+python3 wrf-chammer logs --component all
+```
+
 Open:
 
 ```text
@@ -33,7 +41,8 @@ http://127.0.0.1:8080/
 ```
 
 The start screen shows system readiness, guided map planning, ERA5 input-data
-planning, event search, preset selection, job preview and status/log panels.
+planning, persistent execution, queue/history, event search, preset selection,
+job preview and status/log panels.
 
 ![Xaver search screen](user-guide/screenshots/xaver-01-search.png)
 
@@ -146,8 +155,8 @@ existing downloader configuration format into the managed cache:
 
 This operation performs no CDS request. The UI and API return
 `download_started: false`. Network download, progress, cancellation and retry are
-separate asynchronous-worker functions and are not implied by planning or preparing
-these files.
+separate worker functions and are not implied by planning or preparing these
+files.
 
 For the API, security and cache details, see
 [`ERA5_DATA_UI.md`](ERA5_DATA_UI.md) and
@@ -184,36 +193,91 @@ logic. The browser only renders the returned config and validation status.
 
 ![Xaver generated config](user-guide/screenshots/xaver-04-preview-config.png)
 
-## 5. Start the dry-run
+## 5. Queue a persistent job
 
-Click `Start dry-run` or `Start planned dry-run`.
+After a guided preview is valid, the **Queue the validated simulation** section
+becomes active. Select `Queue latest plan`.
 
-The UI calls:
+The browser creates a unique job id and calls:
+
+```http
+POST /api/jobs
+Content-Type: application/json
+
+{
+  "execution": "queued",
+  "start": true,
+  "config": { "...": "the validated server preview" }
+}
+```
+
+The API validates and stores the immutable configuration in SQLite, assigns a
+managed output directory and returns immediately with `202 Accepted`. The
+simulation is not executed inside the HTTP request.
+
+The **Queue and job history** section shows jobs from previous browser and server
+sessions. Selecting a job displays:
+
+- current state and attempt;
+- assigned worker and timestamps;
+- append-only lifecycle events;
+- errors with stable error codes;
+- logs, outputs and visualization artifacts with SHA-256 checksums.
+
+![Persistent Xaver job in the queue with lifecycle events](user-guide/screenshots/xaver-03d-persistent-queue.png)
+
+A waiting job can be cancelled with `Cancel job`. A running job first enters
+`CANCELLING` while the worker stops its child process tree. `FAILED` and
+`CANCELLED` jobs can be queued as a new attempt with `Retry job`; previous
+attempts and artifacts remain available.
+
+Relevant API endpoints:
+
+```http
+GET  /api/jobs
+GET  /api/jobs/{id}
+POST /api/jobs/{id}/cancel
+POST /api/jobs/{id}/retry
+GET  /api/jobs/{id}/events
+GET  /api/jobs/{id}/artifacts
+```
+
+For the state model, recovery behavior and storage layout, see
+[`JOB_ORCHESTRATION.md`](JOB_ORCHESTRATION.md).
+
+## 6. Run the synchronous dry-run compatibility path
+
+`Start dry-run` and `Start planned dry-run` remain available as a fast compatibility
+path for demonstrations and small tests. They call:
 
 ```http
 POST /api/jobs
 ```
 
-The local server executes the Workbench runner in a server-managed run
-directory. When the run completes, the status panel shows the job id, status,
-run directory, logs and output count.
+without `execution: queued`. The local server executes that dry-run immediately
+and returns the result in the same request. Real downloads and simulations should
+use the persistent queue instead.
 
 ![Xaver dry-run status](user-guide/screenshots/xaver-05-dry-run-status.png)
 
-## 6. Inspect logs
+## 7. Inspect logs
 
-The UI fetches logs through:
+For a synchronous compatibility run, the UI fetches logs through:
 
 ```http
 GET /api/jobs/{id}/logs
 ```
 
-For the dry-run path, the logs show the planned WRF workflow steps without
-starting containers or downloading data.
+For persistent jobs, logs appear in the artifact list and are indexed per attempt.
+The local server and worker process logs are available through:
+
+```bash
+python3 wrf-chammer logs --component all
+```
 
 ![Xaver dry-run logs](user-guide/screenshots/xaver-06-logs.png)
 
-## 7. Inspect real computed weather-map results
+## 8. Inspect real computed weather-map results
 
 Weather-map documentation screenshots must be generated from real WRF
 visualization artifacts. The guide does not use artificial fields as stand-ins
@@ -238,10 +302,10 @@ Commit that PNG only if it was generated from real visualization artifacts. If n
 real-data screenshot is committed yet, this guide intentionally omits the weather
 map image.
 
-## 8. Run the cached ERA5-WRF acceptance path
+## 9. Run the cached ERA5-WRF acceptance path
 
-The browser UI currently drives planning and dry-run execution. The cacheable
-ERA5-WRF path is covered by the Xaver acceptance script:
+The browser UI currently drives planning, queueing and dry-run execution. The
+cacheable ERA5-WRF path is covered by the Xaver acceptance script:
 
 ```bash
 sh ci/test-xaver-demo.sh
