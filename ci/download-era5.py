@@ -208,7 +208,7 @@ def run(args: argparse.Namespace, reporter: ProgressReporter) -> int:
         target_path.parent.mkdir(parents=True, exist_ok=True)
         temp_path = target_path.with_name(target_path.name + ".part")
         cached = target_path.is_file() and target_path.stat().st_size > 0
-        reporter.update(current_request=name, current_attempt=0, status="verifying" if cached else "downloading")
+        reporter.update(current_request=name, current_attempt=None, status="verifying" if cached else "downloading")
 
         if not cached:
             if client is None:
