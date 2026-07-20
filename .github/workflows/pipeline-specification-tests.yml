@@ -8,6 +8,7 @@ on:
       - 'workbench/pipeline_specification_service.py'
       - 'workbench/server/tests/test_pipeline_specification.py'
       - 'workbench/server/tests/test_pipeline_specification_service.py'
+      - 'workbench/server/tests/test_pipeline_specification_path_security.py'
       - 'doc/REAL_PIPELINE_SPECIFICATION.md'
       - '.github/workflows/pipeline-specification-tests.yml'
   push:
@@ -17,6 +18,7 @@ on:
       - 'workbench/pipeline_specification_service.py'
       - 'workbench/server/tests/test_pipeline_specification.py'
       - 'workbench/server/tests/test_pipeline_specification_service.py'
+      - 'workbench/server/tests/test_pipeline_specification_path_security.py'
       - 'doc/REAL_PIPELINE_SPECIFICATION.md'
       - '.github/workflows/pipeline-specification-tests.yml'
   workflow_dispatch:
@@ -64,6 +66,16 @@ jobs:
               exit 1
             }
           cat "${RUNNER_TEMP}/pipeline-service-tests.log"
+
+      - name: Test specification path integrity
+        shell: bash
+        run: |
+          python3 workbench/server/tests/test_pipeline_specification_path_security.py -v \
+            > "${RUNNER_TEMP}/pipeline-path-tests.log" 2>&1 || {
+              cat "${RUNNER_TEMP}/pipeline-path-tests.log"
+              exit 1
+            }
+          cat "${RUNNER_TEMP}/pipeline-path-tests.log"
 
       - name: Upload focused test diagnostics
         if: always()
