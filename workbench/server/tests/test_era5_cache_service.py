@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -14,7 +15,7 @@ from workbench.era5_cache_service import (
     Era5CacheService,
     Era5CacheServiceError,
 )
-from workbench.era5_service import Era5DataService
+from workbench.era5_service import Era5DataService, Era5DataServiceError
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -160,6 +161,40 @@ class Era5CacheServiceTests(unittest.TestCase):
                 event = json.loads(audit.read_text(encoding="utf-8").splitlines()[-1])
                 self.assertEqual(plan_key, event["plan_key"])
                 self.assertEqual([job_id], event["dependent_job_ids"])
+            finally:
+                manager.close()
+
+    def test_waiting_enqueue_revalidates_after_cache_deletion(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="era5-cache-race-") as temporary:
+            service = Era5DataService(REPO_ROOT, Path(temporary) / "cache")
+            manager = CacheCoordinatedEra5DownloadManager(REPO_ROOT, service)
+            plan_key = "3" * 64
+            directory = write_plan(service, plan_key)
+            cache = Era5CacheService(service, manager)
+            errors: list[BaseException] = []
+
+            def enqueue() -> None:
+                try:
+                    manager._enqueue(plan_key, retry_of=None)
+                except BaseException as exc:  # captured for the test thread
+                    errors.append(exc)
+
+            try:
+                with manager.cache_operation_lock:
+                    thread = threading.Thread(target=enqueue)
+                    thread.start()
+                    self.assertTrue(thread.is_alive())
+                    result = cache.delete(plan_key, {
+                        "confirm_plan_key": plan_key,
+                        "dependent_job_ids": [],
+                    })
+                    self.assertTrue(result["ok"])
+                thread.join(timeout=5)
+                self.assertFalse(thread.is_alive())
+                self.assertEqual(1, len(errors))
+                self.assertIsInstance(errors[0], Era5DataServiceError)
+                self.assertFalse(directory.exists())
+                self.assertFalse((service.cache_root / plan_key).exists())
             finally:
                 manager.close()
 
