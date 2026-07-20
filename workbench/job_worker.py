@@ -124,6 +124,7 @@ class JobWorker:
         command = self.command_builder(config_path, attempt_dir)
         process: subprocess.Popen[str] | None = None
         cancellation_started: float | None = None
+        cancellation_code: str | None = None
         forced = False
         try:
             with log_path.open("w", encoding="utf-8") as log:
@@ -140,8 +141,13 @@ class JobWorker:
                 )
                 while process.poll() is None:
                     self.store.heartbeat(self.worker_id)
-                    if self.store.cancel_requested(job_id):
+                    user_cancel = self.store.cancel_requested(job_id)
+                    shutdown_cancel = self._stopping
+                    if user_cancel or shutdown_cancel:
                         if cancellation_started is None:
+                            cancellation_code = (
+                                "CANCELLED_BY_USER" if user_cancel else "WORKER_SHUTDOWN"
+                            )
                             cancellation_started = time.monotonic()
                             self._terminate(process, signal.SIGTERM)
                         elif time.monotonic() - cancellation_started >= self.cancel_grace_seconds:
@@ -153,17 +159,26 @@ class JobWorker:
             self._record_artifacts(job_id, attempt_dir)
             relative_log = str(log_path.relative_to(attempt_dir))
             if cancellation_started is not None:
+                shutdown = cancellation_code == "WORKER_SHUTDOWN"
+                if forced:
+                    message = (
+                        "The worker force-stopped the process while shutting down."
+                        if shutdown
+                        else "The worker force-stopped the process after the cancellation grace period."
+                    )
+                else:
+                    message = (
+                        "The worker stopped the process during an orderly worker shutdown."
+                        if shutdown
+                        else "The worker stopped the process after a cancellation request."
+                    )
                 return self.store.complete(
                     job_id,
                     state="CANCELLED",
                     exit_code=exit_code,
                     log_path=relative_log,
-                    error_code="CANCELLED_BY_USER",
-                    error_message=(
-                        "The worker force-stopped the process after the cancellation grace period."
-                        if forced
-                        else "The worker stopped the process after a cancellation request."
-                    ),
+                    error_code=cancellation_code,
+                    error_message=message,
                 )
             if exit_code == 0:
                 return self.store.complete(
