@@ -1,0 +1,55 @@
+name: Persistent Job Orchestration Tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'workbench/job_store.py'
+      - 'workbench/job_worker.py'
+      - 'workbench/persistent_jobs.py'
+      - 'workbench/server/application.py'
+      - 'workbench/cli.py'
+      - 'ci/test_persistent_job_store.py'
+      - 'ci/test_persistent_job_api.py'
+      - 'ci/test_workbench_cli.py'
+      - 'doc/JOB_ORCHESTRATION.md'
+      - '.github/workflows/persistent-job-tests.yml'
+  push:
+    branches: [master, develop]
+    paths:
+      - 'workbench/job_store.py'
+      - 'workbench/job_worker.py'
+      - 'workbench/persistent_jobs.py'
+      - 'workbench/server/application.py'
+      - 'workbench/cli.py'
+      - 'ci/test_persistent_job_store.py'
+      - 'ci/test_persistent_job_api.py'
+      - 'ci/test_workbench_cli.py'
+      - 'doc/JOB_ORCHESTRATION.md'
+      - '.github/workflows/persistent-job-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: persistent-jobs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  persistent-jobs:
+    name: SQLite queue, worker, API, and recovery
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Test SQLite store and standalone worker
+        run: python3 ci/test_persistent_job_store.py
+
+      - name: Test persistent HTTP API and worker
+        run: python3 ci/test_persistent_job_api.py
+
+      - name: Test managed server and worker lifecycle
+        run: python3 ci/test_workbench_cli.py
