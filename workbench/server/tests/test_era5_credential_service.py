@@ -114,6 +114,24 @@ class Era5CredentialValidationServiceTests(unittest.TestCase):
             finally:
                 service.close()
 
+    def test_shutdown_stays_cancelled_and_persists_no_validator_log(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="cds-service-cancel-") as temporary:
+            root = Path(temporary)
+            data = Era5DataService(REPO_ROOT, root / "cache")
+            fake = root / "validator.py"
+            write_fake_validator(fake, sleep_seconds=3)
+            service = Era5CredentialValidationService(
+                REPO_ROOT, data, validator_path=fake, timeout_seconds=5
+            )
+            started = service.start()
+            job_directory = data.cache_root / ".credential-validation" / started["id"]
+            service.close()
+            time.sleep(0.2)
+            validation = service.status()["validation"]
+            self.assertEqual("CANCELLED", validation["status"])
+            self.assertEqual("application_shutdown", validation["code"])
+            self.assertFalse((job_directory / "validator.log").exists())
+
     def test_timeout_is_classified_without_provider_text(self) -> None:
         with tempfile.TemporaryDirectory(prefix="cds-service-timeout-") as temporary:
             root = Path(temporary)
