@@ -29,6 +29,8 @@ module.exports = defineConfig({
     env: {
       ...process.env,
       WRF_CHAMMER_ERA5_CACHE_ROOT: path.join(repoRoot, 'workbench-runs', 'playwright-era5-cache'),
+      WRF_CHAMMER_JOB_DATABASE: path.join(repoRoot, 'workbench-runs', 'playwright-jobs', 'jobs.sqlite3'),
+      WRF_CHAMMER_PERSISTENT_ROOT: path.join(repoRoot, 'workbench-runs', 'playwright-jobs', 'runs'),
     },
     url: 'http://127.0.0.1:8080/api/health',
     reuseExistingServer: !process.env.CI,
