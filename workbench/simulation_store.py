@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Validated public facade for persistent simulation-job state.
 
-The internal SQLite implementation remains isolated in ``simulation_store_legacy``.
-This module validates immutable specification boundaries and cross-platform paths
-before delegating to that implementation.
+The internal SQLite adapter lives in ``_simulation_store_sqlite``. This module
+validates immutable specification boundaries and cross-platform paths before
+delegating to that adapter.
 """
 
 from __future__ import annotations
@@ -12,8 +12,8 @@ import re
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any
 
-from workbench.simulation_store_legacy import SCHEMA_VERSION, SimulationStoreError
-from workbench.simulation_store_legacy import SimulationStore as _SQLiteSimulationStore
+from workbench._simulation_store_sqlite import SCHEMA_VERSION, SimulationStoreError
+from workbench._simulation_store_sqlite import SimulationStore as _SQLiteSimulationStore
 
 _SPEC_KEY_RE = re.compile(r"^[0-9a-f]{64}$")
 _PLAN_KEY_RE = re.compile(r"^[0-9a-f]{64}$")
