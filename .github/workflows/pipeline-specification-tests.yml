@@ -1,0 +1,48 @@
+name: Real Pipeline Specification Tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'workbench/pipeline_specification.py'
+      - 'workbench/pipeline_specification_service.py'
+      - 'workbench/server/tests/test_pipeline_specification.py'
+      - 'workbench/server/tests/test_pipeline_specification_service.py'
+      - 'doc/REAL_PIPELINE_SPECIFICATION.md'
+      - '.github/workflows/pipeline-specification-tests.yml'
+  push:
+    branches: [master, develop]
+    paths:
+      - 'workbench/pipeline_specification.py'
+      - 'workbench/pipeline_specification_service.py'
+      - 'workbench/server/tests/test_pipeline_specification.py'
+      - 'workbench/server/tests/test_pipeline_specification_service.py'
+      - 'doc/REAL_PIPELINE_SPECIFICATION.md'
+      - '.github/workflows/pipeline-specification-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: real-pipeline-specification-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  specification-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run deterministic specification tests
+        run: |
+          python3 workbench/server/tests/test_pipeline_specification.py -v
+          python3 workbench/server/tests/test_pipeline_specification_service.py -v
+
+      - name: Verify Python syntax
+        run: |
+          python3 -m py_compile \
+            workbench/pipeline_specification.py \
+            workbench/pipeline_specification_service.py
