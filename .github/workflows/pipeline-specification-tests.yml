@@ -24,6 +24,9 @@ on:
 permissions:
   contents: read
 
+env:
+  PYTHONPATH: .
+
 concurrency:
   group: real-pipeline-specification-${{ github.ref }}
   cancel-in-progress: true
