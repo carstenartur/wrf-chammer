@@ -5,36 +5,46 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - 'ci/download-era5.py'
+      - 'workbench/era5_cache_service.py'
       - 'workbench/era5_download_manager.py'
       - 'workbench/era5_service.py'
       - 'workbench/era5_planner.py'
       - 'workbench/server/application.py'
+      - 'workbench/server/tests/test_era5_cache_api.py'
+      - 'workbench/server/tests/test_era5_cache_service.py'
       - 'workbench/server/tests/test_era5_data_api.py'
       - 'workbench/server/tests/test_era5_download_api.py'
       - 'workbench/server/tests/test_era5_download_manager.py'
       - 'workbench/server/tests/test_era5_download_path_security.py'
       - 'workbench/server/tests/test_ui_public_asset_build.py'
       - 'workbench/ui/index.html'
+      - 'workbench/ui/public/era5-cache-management.js'
       - 'workbench/ui/public/era5-download-control.js'
       - 'workbench/web/index.html'
+      - 'workbench/web/era5-cache-management.js'
       - 'workbench/web/era5-download-control.js'
       - '.github/workflows/era5-data-api-tests.yml'
   push:
     branches: [master, develop]
     paths:
       - 'ci/download-era5.py'
+      - 'workbench/era5_cache_service.py'
       - 'workbench/era5_download_manager.py'
       - 'workbench/era5_service.py'
       - 'workbench/era5_planner.py'
       - 'workbench/server/application.py'
+      - 'workbench/server/tests/test_era5_cache_api.py'
+      - 'workbench/server/tests/test_era5_cache_service.py'
       - 'workbench/server/tests/test_era5_data_api.py'
       - 'workbench/server/tests/test_era5_download_api.py'
       - 'workbench/server/tests/test_era5_download_manager.py'
       - 'workbench/server/tests/test_era5_download_path_security.py'
       - 'workbench/server/tests/test_ui_public_asset_build.py'
       - 'workbench/ui/index.html'
+      - 'workbench/ui/public/era5-cache-management.js'
       - 'workbench/ui/public/era5-download-control.js'
       - 'workbench/web/index.html'
+      - 'workbench/web/era5-cache-management.js'
       - 'workbench/web/era5-download-control.js'
       - '.github/workflows/era5-data-api-tests.yml'
   workflow_dispatch:
@@ -50,12 +60,12 @@ jobs:
   api-tests:
     name: Persistent credential-safe ERA5 data jobs
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 7
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run ERA5 planner and API tests
+      - name: Run ERA5 planner, download, and cache tests
         shell: bash
         run: |
           LOG_FILE="${RUNNER_TEMP}/era5-data-api-tests.log"
@@ -63,17 +73,21 @@ jobs:
             python3 workbench/server/tests/test_era5_data_api.py
             python3 workbench/server/tests/test_era5_download_manager.py -v
             python3 workbench/server/tests/test_era5_download_path_security.py -v
+            python3 workbench/server/tests/test_era5_cache_service.py -v
             python3 workbench/server/tests/test_ui_public_asset_build.py
             python3 workbench/server/tests/test_era5_download_api.py
+            python3 workbench/server/tests/test_era5_cache_api.py
           } >"${LOG_FILE}" 2>&1 || {
             cat "${LOG_FILE}"
             exit 1
           }
           cat "${LOG_FILE}"
 
-      - name: Verify browser download control syntax
+      - name: Verify browser controls syntax
         shell: bash
-        run: node --check workbench/web/era5-download-control.js
+        run: |
+          node --check workbench/web/era5-download-control.js
+          node --check workbench/web/era5-cache-management.js
 
       - name: Upload ERA5 API diagnostics
         if: always()

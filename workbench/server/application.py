@@ -25,6 +25,11 @@ from workbench.domain_planner import (  # noqa: E402
     available_profiles,
     plan_domain,
 )
+from workbench.era5_cache_service import (  # noqa: E402
+    CacheCoordinatedEra5DownloadManager,
+    Era5CacheService,
+    Era5CacheServiceError,
+)
 from workbench.era5_download_manager import (  # noqa: E402
     Era5DownloadManager,
     Era5DownloadManagerError,
@@ -35,6 +40,7 @@ from workbench.readiness import collect_readiness  # noqa: E402
 from workbench.server.server import ApiError, WorkbenchApiHandler, WorkbenchApiServer  # noqa: E402
 
 _ERA5_DOWNLOADS_PATH = "/api/data/era5/downloads"
+_ERA5_CACHE_PATH = "/api/data/era5/cache"
 
 
 class WorkbenchApplicationHandler(WorkbenchApiHandler):
@@ -42,6 +48,12 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
         if path == "/web/era5-download-control.js":
             self._send_static_file(
                 self.server.web_dir / "era5-download-control.js",
+                "application/javascript; charset=utf-8",
+            )
+            return True
+        if path == "/web/era5-cache-management.js":
+            self._send_static_file(
+                self.server.web_dir / "era5-cache-management.js",
                 "application/javascript; charset=utf-8",
             )
             return True
@@ -57,9 +69,24 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
     def _era5_download_manager(self) -> Era5DownloadManager:
         manager = getattr(self.server, "era5_download_manager", None)
         if not isinstance(manager, Era5DownloadManager):
-            manager = Era5DownloadManager(self.server.repo_root, self._era5_service())
+            manager = CacheCoordinatedEra5DownloadManager(
+                self.server.repo_root, self._era5_service()
+            )
             self.server.era5_download_manager = manager
         return manager
+
+    def _era5_cache_service(self) -> Era5CacheService:
+        service = getattr(self.server, "era5_cache_service", None)
+        if not isinstance(service, Era5CacheService):
+            manager = self._era5_download_manager()
+            if not isinstance(manager, CacheCoordinatedEra5DownloadManager):
+                raise Era5CacheServiceError(
+                    "cache_manager_unavailable",
+                    "The ERA5 cache manager is not available.",
+                )
+            service = Era5CacheService(self._era5_service(), manager)
+            self.server.era5_cache_service = service
+        return service
 
     def _latest_wizard_preview(self) -> dict[str, Any] | None:
         preview = getattr(self.server, "latest_wizard_preview", None)
@@ -73,8 +100,12 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
             "/api/wizard/latest",
             "/api/data/era5/status",
             _ERA5_DOWNLOADS_PATH,
+            _ERA5_CACHE_PATH,
         }
-        if path not in supported and not path.startswith(f"{_ERA5_DOWNLOADS_PATH}/"):
+        dynamic_supported = path.startswith(f"{_ERA5_DOWNLOADS_PATH}/") or path.startswith(
+            f"{_ERA5_CACHE_PATH}/"
+        )
+        if path not in supported and not dynamic_supported:
             super().do_GET()
             return
         try:
@@ -91,9 +122,17 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
             elif path == _ERA5_DOWNLOADS_PATH:
                 downloads = self._era5_download_manager().list()
                 payload = {"ok": True, "count": len(downloads), "downloads": downloads}
+            elif path == _ERA5_CACHE_PATH:
+                entries = self._era5_cache_service().list_entries()
+                payload = {"ok": True, "count": len(entries), "entries": entries}
+            elif path.startswith(f"{_ERA5_CACHE_PATH}/"):
+                plan_key = unquote(path[len(f"{_ERA5_CACHE_PATH}/"):])
+                payload = {"ok": True, "entry": self._era5_cache_service().detail(plan_key)}
             else:
                 payload = self._handle_get_era5_download(path)
             self._send_json(HTTPStatus.OK, payload)
+        except Era5CacheServiceError as exc:
+            self._send_cache_error(exc)
         except Era5DownloadManagerError as exc:
             self._send_download_error(exc)
         except Era5DataServiceError as exc:
@@ -115,7 +154,10 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
         is_download_action = path.startswith(f"{_ERA5_DOWNLOADS_PATH}/") and (
             path.endswith("/cancel") or path.endswith("/retry")
         )
-        if path not in supported and not is_download_action:
+        is_cache_action = path.startswith(f"{_ERA5_CACHE_PATH}/") and path.endswith(
+            "/delete"
+        )
+        if path not in supported and not is_download_action and not is_cache_action:
             super().do_POST()
             return
         try:
@@ -139,6 +181,12 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
                 )
                 payload = {"ok": True, "download": download}
                 status = HTTPStatus.ACCEPTED
+            elif is_cache_action:
+                plan_key = unquote(
+                    path[len(f"{_ERA5_CACHE_PATH}/"):-len("/delete")]
+                )
+                payload = self._era5_cache_service().delete(plan_key, request)
+                status = HTTPStatus.OK
             else:
                 payload = self._handle_post_era5_download(path)
                 status = HTTPStatus.ACCEPTED
@@ -148,6 +196,8 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
                 HTTPStatus.UNPROCESSABLE_ENTITY,
                 {"ok": False, "valid": False, "errors": exc.errors},
             )
+        except Era5CacheServiceError as exc:
+            self._send_cache_error(exc)
         except Era5DownloadManagerError as exc:
             self._send_download_error(exc)
         except Era5DataServiceError as exc:
@@ -182,6 +232,17 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
         else:  # guarded by do_POST
             raise Era5DownloadManagerError("download_not_found", "ERA5 download job not found.")
         return {"ok": True, "download": download}
+
+    def _send_cache_error(self, exc: Era5CacheServiceError) -> None:
+        if exc.code == "cache_entry_not_found":
+            status = HTTPStatus.NOT_FOUND
+        elif exc.code == "cache_delete_confirmation_invalid":
+            status = HTTPStatus.UNPROCESSABLE_ENTITY
+        elif exc.code == "cache_delete_failed":
+            status = HTTPStatus.INTERNAL_SERVER_ERROR
+        else:
+            status = HTTPStatus.CONFLICT
+        self._send_error(status, exc.code, exc.message)
 
     def _send_download_error(self, exc: Era5DownloadManagerError) -> None:
         status = (
