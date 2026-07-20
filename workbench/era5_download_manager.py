@@ -98,6 +98,7 @@ class Era5DownloadManager:
             configured_count = 1
         self.max_concurrent = max(1, min(4, max_concurrent or configured_count))
         self._condition = threading.Condition()
+        self._event_lock = threading.Lock()
         self._processes: dict[str, subprocess.Popen[str]] = {}
         self._stopping = False
         self._recover_interrupted_jobs()
@@ -635,25 +636,26 @@ class Era5DownloadManager:
         _atomic_json(path, state)
 
     def _append_event(self, state: dict[str, Any], event_type: str, message: str) -> None:
-        path = self._job_directory(state["plan_key"], state["id"]) / "events.jsonl"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        sequence = 1
-        if path.is_file():
-            try:
-                sequence = len(path.read_text(encoding="utf-8").splitlines()) + 1
-            except OSError:
-                sequence = 1
-        event = {
-            "sequence": sequence,
-            "timestamp": _utc_now(),
-            "type": event_type,
-            "status": state.get("status"),
-            "message": message,
-        }
-        with path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(event, separators=(",", ":")) + "\n")
-            handle.flush()
-            os.fsync(handle.fileno())
+        with self._event_lock:
+            path = self._job_directory(state["plan_key"], state["id"]) / "events.jsonl"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            sequence = 1
+            if path.is_file():
+                try:
+                    sequence = len(path.read_text(encoding="utf-8").splitlines()) + 1
+                except OSError:
+                    sequence = 1
+            event = {
+                "sequence": sequence,
+                "timestamp": _utc_now(),
+                "type": event_type,
+                "status": state.get("status"),
+                "message": message,
+            }
+            with path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(event, separators=(",", ":")) + "\n")
+                handle.flush()
+                os.fsync(handle.fileno())
 
     def _job_directory(self, plan_key: str, job_id: str) -> Path:
         plan_directory = self.data_service.plan_directory(plan_key).resolve()
