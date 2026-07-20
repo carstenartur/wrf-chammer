@@ -17,7 +17,6 @@ from workbench.pipeline_specification import (
     PIPELINE_PROFILES,
     PipelineSpecificationError,
     build_run_specification_identity,
-    canonical_json,
     sha256_value,
 )
 
@@ -313,7 +312,13 @@ class PipelineSpecificationService:
                 "specification_not_found", "Immutable pipeline specification not found."
             )
         root = self.root.resolve()
-        directory = (root / spec_key).resolve()
+        candidate = root / spec_key
+        if candidate.is_symlink():
+            raise PipelineSpecificationServiceError(
+                "specification_integrity_error",
+                "Symlinked immutable specification directories are not allowed.",
+            )
+        directory = candidate.resolve()
         if directory.parent != root:
             raise PipelineSpecificationServiceError(
                 "specification_not_found", "Immutable pipeline specification not found."
