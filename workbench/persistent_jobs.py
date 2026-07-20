@@ -23,7 +23,7 @@ def _managed_path(repo_root: Path, value: str | Path, label: str) -> Path:
     try:
         if os.path.commonpath([str(managed_root), str(resolved)]) != str(managed_root):
             raise JobConflictError(f"{label} must remain under workbench-runs")
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
         raise JobConflictError(f"Could not resolve {label}") from exc
     return resolved
 
