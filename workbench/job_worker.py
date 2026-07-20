@@ -68,7 +68,12 @@ class JobWorker:
         self._stopping = True
 
     def recover(self) -> list[str]:
-        active_workers = self.store.live_worker_ids(max_age_seconds=max(30.0, self.poll_seconds * 10))
+        active_workers = self.store.live_worker_ids(
+            max_age_seconds=max(30.0, self.poll_seconds * 10)
+        )
+        # A restarted worker may deliberately reuse its stable id. Its new
+        # heartbeat must not make jobs owned by the previous process look alive.
+        active_workers.discard(self.worker_id)
         return self.store.recover_orphaned_jobs(active_workers)
 
     def run(self, *, once: bool = False) -> int:
