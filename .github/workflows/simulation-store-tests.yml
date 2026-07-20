@@ -5,7 +5,7 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - 'workbench/simulation_store.py'
-      - 'workbench/simulation_store_legacy.py'
+      - 'workbench/_simulation_store_sqlite.py'
       - 'workbench/server/tests/test_simulation_store.py'
       - 'workbench/server/tests/test_simulation_store_validation.py'
       - 'doc/PERSISTENT_SIMULATION_JOBS.md'
@@ -14,7 +14,7 @@ on:
     branches: [master, develop]
     paths:
       - 'workbench/simulation_store.py'
-      - 'workbench/simulation_store_legacy.py'
+      - 'workbench/_simulation_store_sqlite.py'
       - 'workbench/server/tests/test_simulation_store.py'
       - 'workbench/server/tests/test_simulation_store_validation.py'
       - 'doc/PERSISTENT_SIMULATION_JOBS.md'
@@ -43,7 +43,7 @@ jobs:
         run: |
           python3 -m py_compile \
             workbench/simulation_store.py \
-            workbench/simulation_store_legacy.py \
+            workbench/_simulation_store_sqlite.py \
             workbench/server/tests/test_simulation_store_validation.py
 
       - name: Run SQLite state-machine tests
