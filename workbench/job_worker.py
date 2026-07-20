@@ -92,9 +92,9 @@ class JobWorker:
 
     def _attempt_directory(self, job: dict[str, Any]) -> Path:
         run_root = (self.repo_root / str(job["run_root"])).resolve()
-        persistent_root = (self.repo_root / "workbench-runs" / "persistent").resolve()
-        if not _is_under(run_root, persistent_root):
-            raise RuntimeError("Persistent job run root is outside workbench-runs/persistent")
+        managed_root = (self.repo_root / "workbench-runs").resolve()
+        if not _is_under(run_root, managed_root):
+            raise RuntimeError("Persistent job run root is outside workbench-runs")
         attempt_dir = run_root / f"attempt-{int(job['attempt']):04d}"
         attempt_dir.mkdir(parents=True, exist_ok=True)
         if not _is_under(attempt_dir, run_root):
@@ -249,7 +249,13 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     repo_root = args.repo_root.resolve()
-    database = (args.database or repo_root / "workbench-runs" / "jobs.sqlite3").resolve()
+    configured_database = args.database or os.environ.get(
+        "WRF_CHAMMER_JOB_DATABASE", "workbench-runs/jobs.sqlite3"
+    )
+    database_path = Path(configured_database).expanduser()
+    if not database_path.is_absolute():
+        database_path = repo_root / database_path
+    database = database_path.resolve()
     store = JobStore(database)
     worker = JobWorker(
         repo_root,
