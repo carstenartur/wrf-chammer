@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import copy
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -13,16 +14,38 @@ from workbench.job_store import JobConflictError, JobNotFoundError, JobStore
 JOB_ID_RE = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
 
 
+def _managed_path(repo_root: Path, value: str | Path, label: str) -> Path:
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = repo_root / path
+    resolved = path.resolve()
+    managed_root = (repo_root / "workbench-runs").resolve()
+    try:
+        if os.path.commonpath([str(managed_root), str(resolved)]) != str(managed_root):
+            raise JobConflictError(f"{label} must remain under workbench-runs")
+    except OSError as exc:
+        raise JobConflictError(f"Could not resolve {label}") from exc
+    return resolved
+
+
 class PersistentJobService:
     """Validate paths and expose persistent jobs without HTTP dependencies."""
 
     def __init__(self, repo_root: Path, database_path: Path | None = None):
         self.repo_root = repo_root.resolve()
-        self.persistent_root = (self.repo_root / "workbench-runs" / "persistent").resolve()
+        configured_root = os.environ.get(
+            "WRF_CHAMMER_PERSISTENT_ROOT", "workbench-runs/persistent"
+        )
+        self.persistent_root = _managed_path(
+            self.repo_root, configured_root, "persistent job root"
+        )
         self.persistent_root.mkdir(parents=True, exist_ok=True)
-        self.database_path = (
-            database_path or self.repo_root / "workbench-runs" / "jobs.sqlite3"
-        ).resolve()
+        configured_database: str | Path = database_path or os.environ.get(
+            "WRF_CHAMMER_JOB_DATABASE", "workbench-runs/jobs.sqlite3"
+        )
+        self.database_path = _managed_path(
+            self.repo_root, configured_database, "persistent job database"
+        )
         self.store = JobStore(self.database_path)
 
     def exists(self, job_id: str) -> bool:
