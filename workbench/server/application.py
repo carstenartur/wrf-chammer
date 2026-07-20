@@ -72,7 +72,11 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
         try:
             value = int(raw)
         except ValueError as exc:
-            raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_query", f"{name} must be an integer") from exc
+            raise ApiError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_query",
+                f"{name} must be an integer",
+            ) from exc
         return max(minimum, min(value, maximum))
 
     def do_GET(self) -> None:  # noqa: N802
@@ -87,17 +91,33 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
                 jobs = self._persistent_jobs().list(limit=limit)
                 self._send_json(
                     HTTPStatus.OK,
-                    {"ok": True, "execution": "persistent", "count": len(jobs), "jobs": jobs},
+                    {
+                        "ok": True,
+                        "execution": "persistent",
+                        "count": len(jobs),
+                        "jobs": jobs,
+                    },
                 )
             except ApiError as exc:
                 self._send_error(exc.status, exc.code, exc.message, exc.details)
             except Exception as exc:  # pragma: no cover
-                self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "application_error", str(exc))
+                self._send_error(
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                    "application_error",
+                    str(exc),
+                )
             return
 
         if path.startswith("/api/jobs/"):
+            parts = [unquote(part) for part in path.split("/") if part]
             job_id = self._persistent_job_id(path)
-            if job_id and self._persistent_jobs().exists(job_id):
+            persistent_endpoint = (
+                len(parts) == 3
+                or (len(parts) == 4 and parts[3] in {"events", "artifacts"})
+            )
+            if job_id and (
+                persistent_endpoint or self._persistent_jobs().exists(job_id)
+            ):
                 self._handle_persistent_get(path, query, job_id)
                 return
 
@@ -118,14 +138,24 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
                 payload = {"ok": True, "profiles": available_profiles()}
             elif path == "/api/wizard/latest":
                 latest = self._latest_wizard_preview()
-                payload = {"ok": True, "available": latest is not None, "preview": latest}
+                payload = {
+                    "ok": True,
+                    "available": latest is not None,
+                    "preview": latest,
+                }
             else:
-                payload = self._era5_service().status(self._latest_wizard_preview())
+                payload = self._era5_service().status(
+                    self._latest_wizard_preview()
+                )
             self._send_json(HTTPStatus.OK, payload)
         except ApiError as exc:
             self._send_error(exc.status, exc.code, exc.message, exc.details)
         except Exception as exc:  # pragma: no cover
-            self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "application_error", str(exc))
+            self._send_error(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                "application_error",
+                str(exc),
+            )
 
     def _handle_persistent_get(
         self,
@@ -140,12 +170,22 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
             if len(parts) == 3:
                 payload = {"ok": True, "job": service.get(job_id)}
             elif len(parts) == 4 and parts[3] == "events":
-                after_id = self._query_int(query, "after_id", 0, 0, 2_147_483_647)
+                after_id = self._query_int(
+                    query,
+                    "after_id",
+                    0,
+                    0,
+                    2_147_483_647,
+                )
                 limit = self._query_int(query, "limit", 200, 1, 1000)
                 payload = {
                     "ok": True,
                     "job_id": job_id,
-                    "events": service.events(job_id, after_id=after_id, limit=limit),
+                    "events": service.events(
+                        job_id,
+                        after_id=after_id,
+                        limit=limit,
+                    ),
                 }
             elif len(parts) == 4 and parts[3] == "artifacts":
                 payload = {
@@ -154,7 +194,11 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
                     "artifacts": service.artifacts(job_id),
                 }
             else:
-                self._send_error(HTTPStatus.NOT_FOUND, "not_found", f"Unknown endpoint: {path}")
+                self._send_error(
+                    HTTPStatus.NOT_FOUND,
+                    "not_found",
+                    f"Unknown endpoint: {path}",
+                )
                 return
             self._send_json(HTTPStatus.OK, payload)
         except JobNotFoundError as exc:
@@ -162,7 +206,11 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
         except ApiError as exc:
             self._send_error(exc.status, exc.code, exc.message, exc.details)
         except Exception as exc:  # pragma: no cover
-            self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "application_error", str(exc))
+            self._send_error(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                "application_error",
+                str(exc),
+            )
 
     def do_POST(self) -> None:  # noqa: N802
         path = urlparse(self.path).path.rstrip("/") or "/"
@@ -173,13 +221,13 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
 
         if path.startswith("/api/jobs/") and path.endswith("/retry"):
             job_id = self._persistent_job_id(path)
-            if job_id and self._persistent_jobs().exists(job_id):
+            if job_id:
                 self._handle_persistent_action("retry", job_id)
                 return
 
         if path.startswith("/api/jobs/") and path.endswith("/cancel"):
             job_id = self._persistent_job_id(path)
-            if job_id and self._persistent_jobs().exists(job_id):
+            if job_id:
                 self._handle_persistent_action("cancel", job_id)
                 return
 
@@ -200,9 +248,15 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
             elif path == "/api/wizard/preview":
                 payload = self._wizard_preview(request)
             elif path == "/api/data/era5/plan":
-                payload = self._era5_service().plan(request, self._latest_wizard_preview())
+                payload = self._era5_service().plan(
+                    request,
+                    self._latest_wizard_preview(),
+                )
             else:
-                payload = self._era5_service().prepare(request, self._latest_wizard_preview())
+                payload = self._era5_service().prepare(
+                    request,
+                    self._latest_wizard_preview(),
+                )
             self._send_json(HTTPStatus.OK, payload)
         except (DomainPlanningError, Era5PlanningError) as exc:
             self._send_json(
@@ -219,7 +273,11 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
         except ApiError as exc:
             self._send_error(exc.status, exc.code, exc.message, exc.details)
         except Exception as exc:  # pragma: no cover
-            self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "application_error", str(exc))
+            self._send_error(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                "application_error",
+                str(exc),
+            )
 
     def _handle_application_create_job(self) -> None:
         try:
@@ -250,8 +308,14 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
                     priority=priority,
                 )
                 self._send_json(
-                    HTTPStatus.ACCEPTED if job["state"] == "QUEUED" else HTTPStatus.CREATED,
-                    {"ok": True, "execution": "persistent", "job": job},
+                    HTTPStatus.ACCEPTED
+                    if job["state"] == "QUEUED"
+                    else HTTPStatus.CREATED,
+                    {
+                        "ok": True,
+                        "execution": "persistent",
+                        "job": job,
+                    },
                 )
                 return
             if execution not in {"synchronous", "legacy"}:
@@ -266,7 +330,11 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
         except ApiError as exc:
             self._send_error(exc.status, exc.code, exc.message, exc.details)
         except Exception as exc:  # pragma: no cover
-            self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "application_error", str(exc))
+            self._send_error(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                "application_error",
+                str(exc),
+            )
 
     def _legacy_create_from_request(self, request: dict[str, Any]) -> None:
         submitted_config = self._extract_config(request)
@@ -279,7 +347,11 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
             return
         job_id = submitted_config["id"]
         if not JOB_ID_RE.match(job_id):
-            raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_job_id", f"Invalid job id: {job_id!r}")
+            raise ApiError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_job_id",
+                f"Invalid job id: {job_id!r}",
+            )
         run_dir = self._create_run_dir()
         config = self._server_managed_config(submitted_config, run_dir)
         sanitized_errors = self._validate_config(config)
@@ -309,24 +381,41 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
         self._write_run_metadata(run_dir, job_id, "created")
         self._write_index_record(job_id, run_dir.name, "created")
         if not bool(request.get("start", True)):
-            self._send_json(HTTPStatus.CREATED, {"ok": True, "job": self._job_summary(job_id)})
+            self._send_json(
+                HTTPStatus.CREATED,
+                {"ok": True, "job": self._job_summary(job_id)},
+            )
             return
         result = self._run_workbench(config_path, run_dir)
         self._write_run_metadata(run_dir, job_id, result["status"])
         self._write_index_record(job_id, run_dir.name, result["status"])
         self._send_json(
-            HTTPStatus.CREATED if result["exit_code"] == 0 else HTTPStatus.INTERNAL_SERVER_ERROR,
-            {"ok": result["exit_code"] == 0, "job": self._job_summary(job_id), "run": result},
+            HTTPStatus.CREATED
+            if result["exit_code"] == 0
+            else HTTPStatus.INTERNAL_SERVER_ERROR,
+            {
+                "ok": result["exit_code"] == 0,
+                "job": self._job_summary(job_id),
+                "run": result,
+            },
         )
 
     def _handle_persistent_action(self, action: str, job_id: str) -> None:
         try:
             self._require_local_client()
             service = self._persistent_jobs()
-            job = service.cancel(job_id) if action == "cancel" else service.retry(job_id)
+            job = (
+                service.cancel(job_id)
+                if action == "cancel"
+                else service.retry(job_id)
+            )
             self._send_json(
                 HTTPStatus.ACCEPTED,
-                {"ok": True, "execution": "persistent", "job": job},
+                {
+                    "ok": True,
+                    "execution": "persistent",
+                    "job": job,
+                },
             )
         except JobNotFoundError as exc:
             self._send_error(HTTPStatus.NOT_FOUND, "job_not_found", str(exc))
@@ -335,12 +424,20 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
         except ApiError as exc:
             self._send_error(exc.status, exc.code, exc.message, exc.details)
         except Exception as exc:  # pragma: no cover
-            self._send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "application_error", str(exc))
+            self._send_error(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                "application_error",
+                str(exc),
+            )
 
     @staticmethod
     def _persistent_job_id(path: str) -> str | None:
         parts = [unquote(part) for part in path.split("/") if part]
-        return parts[2] if len(parts) >= 3 and parts[:2] == ["api", "jobs"] else None
+        return (
+            parts[2]
+            if len(parts) >= 3 and parts[:2] == ["api", "jobs"]
+            else None
+        )
 
     def _wizard_preview(self, request: dict[str, Any]) -> dict[str, Any]:
         event_ref = request.get("event") or "xaver"
@@ -353,14 +450,19 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
         plan = plan_domain(planning_request)
 
         mode = str(request.get("mode") or "dry-run")
-        job_id = str(request.get("job_id") or f"{event_ref.lower()}-map-preview")
+        job_id = str(
+            request.get("job_id") or f"{event_ref.lower()}-map-preview"
+        )
         config = build_job_config(
             event_ref,
             mode=mode,
             job_id=job_id,
             catalogue=self._catalogue(),
         )
-        config["period"] = {"start": plan["period"]["start"], "end": plan["period"]["end"]}
+        config["period"] = {
+            "start": plan["period"]["start"],
+            "end": plan["period"]["end"],
+        }
         planned_domain = plan["domain"]
         config["domain"] = {
             "label": planned_domain["label"],
@@ -393,9 +495,20 @@ class WorkbenchApplicationHandler(WorkbenchApiHandler):
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run the local WRF Workbench application")
-    parser.add_argument("--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1)")
-    parser.add_argument("--port", type=int, default=8080, help="Bind port (default: 8080)")
+    parser = argparse.ArgumentParser(
+        description="Run the local WRF Workbench application"
+    )
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Bind host (default: 127.0.0.1)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8080,
+        help="Bind port (default: 8080)",
+    )
     parser.add_argument(
         "--repo-root",
         type=Path,
@@ -407,8 +520,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
-    server = WorkbenchApiServer((args.host, args.port), WorkbenchApplicationHandler, args.repo_root)
-    print(f"WRF Workbench available at http://{args.host}:{args.port}/", flush=True)
+    server = WorkbenchApiServer(
+        (args.host, args.port),
+        WorkbenchApplicationHandler,
+        args.repo_root,
+    )
+    print(
+        f"WRF Workbench available at http://{args.host}:{args.port}/",
+        flush=True,
+    )
     try:
         server.serve_forever()
     except KeyboardInterrupt:
