@@ -1,0 +1,56 @@
+name: Job Stream and Resource Tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'workbench/job_event_stream.py'
+      - 'workbench/job_resources.py'
+      - 'workbench/job_worker.py'
+      - 'workbench/persistent_jobs.py'
+      - 'workbench/server/application.py'
+      - 'workbench/ui/src/features/jobs/**'
+      - 'ci/test_job_event_stream.py'
+      - 'ci/test_job_resources.py'
+      - 'ci/test_job_stream_api.py'
+      - '.github/workflows/job-stream-resource-tests.yml'
+  push:
+    branches: [master, develop]
+    paths:
+      - 'workbench/job_event_stream.py'
+      - 'workbench/job_resources.py'
+      - 'workbench/job_worker.py'
+      - 'workbench/persistent_jobs.py'
+      - 'workbench/server/application.py'
+      - 'workbench/ui/src/features/jobs/**'
+      - 'ci/test_job_event_stream.py'
+      - 'ci/test_job_resources.py'
+      - 'ci/test_job_stream_api.py'
+      - '.github/workflows/job-stream-resource-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: job-stream-resources-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: SSE replay, resource migration, and admission
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Test durable SSE replay
+        run: python3 ci/test_job_event_stream.py
+
+      - name: Test resource migration and worker preflight
+        run: python3 ci/test_job_resources.py
+
+      - name: Test streaming HTTP API
+        if: ${{ hashFiles('ci/test_job_stream_api.py') != '' }}
+        run: python3 ci/test_job_stream_api.py
