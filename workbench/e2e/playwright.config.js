@@ -24,7 +24,7 @@ module.exports = defineConfig({
     },
   ],
   webServer: {
-    command: 'python3 -m workbench.server.application --host 127.0.0.1 --port 8080',
+    command: 'python3 -m workbench.server.streaming_application --host 127.0.0.1 --port 8080',
     cwd: repoRoot,
     env: {
       ...process.env,
