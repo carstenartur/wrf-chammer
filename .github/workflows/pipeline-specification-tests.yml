@@ -36,13 +36,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run deterministic specification tests
-        run: |
-          python3 workbench/server/tests/test_pipeline_specification.py -v
-          python3 workbench/server/tests/test_pipeline_specification_service.py -v
-
       - name: Verify Python syntax
         run: |
           python3 -m py_compile \
             workbench/pipeline_specification.py \
             workbench/pipeline_specification_service.py
+
+      - name: Test deterministic identities and namelists
+        run: python3 workbench/server/tests/test_pipeline_specification.py -v
+
+      - name: Test immutable specification persistence
+        run: python3 workbench/server/tests/test_pipeline_specification_service.py -v
