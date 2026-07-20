@@ -10,6 +10,8 @@ async function pipelineRequestJson(path, init) {
   return payload;
 }
 
+const PIPELINE_PINNED_IDENTITY_RE = /^sha256:[0-9a-f]{64}$/;
+
 function pipelineEscape(value) {
   return String(value ?? '')
     .replaceAll('&', '&amp;')
@@ -19,11 +21,14 @@ function pipelineEscape(value) {
     .replaceAll("'", '&#039;');
 }
 
+function pipelineIsPinnedIdentity(value) {
+  return PIPELINE_PINNED_IDENTITY_RE.test(String(value || ''));
+}
+
 function pipelineShortHash(value) {
   const text = String(value || '');
-  if (text.startsWith('sha256:')) return `${text.slice(0, 19)}…${text.slice(-8)}`;
-  if (text.length > 24) return `${text.slice(0, 16)}…${text.slice(-8)}`;
-  return text || 'not pinned';
+  if (pipelineIsPinnedIdentity(text)) return `${text.slice(0, 19)}…${text.slice(-8)}`;
+  return 'not pinned';
 }
 
 function pipelineFormatPeriod(period) {
@@ -60,6 +65,13 @@ class RealPipelineSpecification extends HTMLElement {
     ));
   }
 
+  get runtimeIdentitiesPinned() {
+    const runtimes = this.readiness?.runtime || {};
+    return ['wps', 'wrf', 'postprocessing'].every((name) => (
+      pipelineIsPinnedIdentity(runtimes[name]?.identity)
+    ));
+  }
+
   async refresh() {
     this.message = 'Refreshing runtime identities, verified ERA5 inputs and immutable specifications…';
     this.messageKind = 'pending';
@@ -81,7 +93,7 @@ class RealPipelineSpecification extends HTMLElement {
       if (!profileIds.includes(this.selectedProfile)) {
         this.selectedProfile = profileIds[0] || '';
       }
-      if (!readiness.ready) {
+      if (!readiness.ready || !this.runtimeIdentitiesPinned) {
         this.message = 'Pin all WPS, WRF and postprocessing runtime identities before freezing a real run.';
         this.messageKind = 'warning';
       } else if (!readiness.wizard_preview_available) {
@@ -101,7 +113,7 @@ class RealPipelineSpecification extends HTMLElement {
   }
 
   async freezeSpecification() {
-    if (!this.selectedPlanKey || !this.selectedProfile) return;
+    if (!this.selectedPlanKey || !this.selectedProfile || !this.runtimeIdentitiesPinned) return;
     this.message = 'Freezing job, namelists, input checksums and runtime identities…';
     this.messageKind = 'pending';
     this.render();
@@ -150,8 +162,9 @@ class RealPipelineSpecification extends HTMLElement {
   }
 
   renderRuntime(name, runtime) {
+    const pinned = pipelineIsPinnedIdentity(runtime?.identity);
     return `
-      <div class="runtime-card ${runtime?.identity ? 'ready' : 'warning'}">
+      <div class="runtime-card ${pinned ? 'ready' : 'warning'}">
         <span>${pipelineEscape(name)}</span>
         <strong>${pipelineEscape(runtime?.reference || 'not configured')}</strong>
         <code title="${pipelineEscape(runtime?.identity || '')}">${pipelineEscape(pipelineShortHash(runtime?.identity))}</code>
@@ -196,6 +209,7 @@ class RealPipelineSpecification extends HTMLElement {
     const runtimes = this.readiness?.runtime || {};
     const canFreeze = Boolean(
       this.readiness?.ready
+      && this.runtimeIdentitiesPinned
       && this.readiness?.wizard_preview_available
       && this.selectedPlanKey
       && this.selectedProfile
