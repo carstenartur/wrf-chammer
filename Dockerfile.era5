@@ -42,6 +42,7 @@ COPY ci/download-era5.sh /usr/local/bin/download-era5.sh
 COPY ci/prepare-era5-wps.py /usr/local/bin/prepare-era5-wps.py
 COPY ci/prepare-era5-wps.sh /usr/local/bin/prepare-era5-wps.sh
 COPY ci/run-era5-pipeline.sh /usr/local/bin/run-era5-pipeline.sh
+COPY ci/run-wps-step.py /usr/local/bin/run-wps-step.py
 COPY ci/verify-era5-outputs.sh /usr/local/bin/verify-era5-outputs.sh
 
 RUN chmod +x \
@@ -50,6 +51,7 @@ RUN chmod +x \
       /usr/local/bin/prepare-era5-wps.py \
       /usr/local/bin/prepare-era5-wps.sh \
       /usr/local/bin/run-era5-pipeline.sh \
+      /usr/local/bin/run-wps-step.py \
       /usr/local/bin/verify-era5-outputs.sh \
     && mkdir -p /workspace /data/era5 /work/wps
 

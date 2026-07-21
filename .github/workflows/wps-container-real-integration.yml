@@ -1,0 +1,82 @@
+name: Step-Separated WPS Binary Compatibility Test
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'Dockerfile.wps'
+      - 'Dockerfile.era5'
+      - 'ci/run-wps-step.py'
+      - 'ci/test-wps-container-steps.sh'
+      - 'tests/era5-mini/**'
+      - '.github/workflows/wps-container-real-integration.yml'
+  push:
+    branches: [master, develop]
+    paths:
+      - 'Dockerfile.wps'
+      - 'Dockerfile.era5'
+      - 'ci/run-wps-step.py'
+      - 'ci/test-wps-container-steps.sh'
+      - 'tests/era5-mini/**'
+      - '.github/workflows/wps-container-real-integration.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: step-wps-compatibility-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  wps-binary-compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build WPS runtime
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.wps
+          tags: wps-reproducible:latest
+          load: true
+          cache-from: type=gha,scope=wps-reproducible
+          cache-to: type=gha,scope=wps-reproducible,mode=max
+
+      - name: Build ERA5/WPS step runtime
+        run: |
+          docker build \
+            --build-arg WPS_IMAGE=wps-reproducible:latest \
+            -f Dockerfile.era5 \
+            -t era5-pipeline:latest \
+            .
+
+      - name: Run ungrib and metgrid against explicit test fixtures
+        env:
+          ERA5_IMAGE: era5-pipeline:latest
+          WORKDIR: /tmp/wps-container-steps
+        run: sh ci/test-wps-container-steps.sh
+
+      - name: Package diagnostics on failure
+        if: failure()
+        run: |
+          if [ -d /tmp/wps-container-steps ]; then
+            tar -czf /tmp/wps-container-step-logs.tar.gz \
+              -C /tmp wps-container-steps
+          fi
+
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wps-binary-compatibility-diagnostics
+          path: /tmp/wps-container-step-logs.tar.gz
+          if-no-files-found: ignore
