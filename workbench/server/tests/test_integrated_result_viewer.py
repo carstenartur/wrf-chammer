@@ -6,8 +6,8 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
-import threading
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from urllib.error import HTTPError
@@ -130,25 +130,21 @@ class IntegratedResultViewerTests(unittest.TestCase):
                     "size_bytes": len(body),
                 }
             )
+        self.original_index = {
+            "version": 1,
+            "specification_key": SPECIFICATION_KEY,
+            "source_revision": SOURCE_REVISION,
+            "era5_plan_key": ERA5_PLAN_KEY,
+            "runtime": copy.deepcopy(RUNTIME),
+            "artificial_weather_data": False,
+            "visualization_provenance": {
+                "mode": "wrf",
+                "wrfout_files": WRF_OUTPUTS,
+            },
+            "products": products,
+        }
         self.index_path = results / "index.json"
-        self.index_path.write_text(
-            json.dumps(
-                {
-                    "version": 1,
-                    "specification_key": SPECIFICATION_KEY,
-                    "source_revision": SOURCE_REVISION,
-                    "era5_plan_key": ERA5_PLAN_KEY,
-                    "runtime": RUNTIME,
-                    "artificial_weather_data": False,
-                    "visualization_provenance": {
-                        "mode": "wrf",
-                        "wrfout_files": WRF_OUTPUTS,
-                    },
-                    "products": products,
-                }
-            ),
-            encoding="utf-8",
-        )
+        self.index_path.write_text(json.dumps(self.original_index), encoding="utf-8")
         index_body = self.index_path.read_bytes()
         self.job = {
             "id": JOB_ID,
@@ -260,7 +256,7 @@ class IntegratedResultViewerTests(unittest.TestCase):
                     self.service.read_product(JOB_ID, value)
 
     def test_result_index_and_metadata_provenance_are_verified(self) -> None:
-        index = json.loads(self.index_path.read_text(encoding="utf-8"))
+        index = copy.deepcopy(self.original_index)
         index["visualization_provenance"]["mode"] = "fixture"
         self.rewrite_index(index)
         with self.assertRaisesRegex(SimulationResultError, "WRF output"):
@@ -273,12 +269,14 @@ class IntegratedResultViewerTests(unittest.TestCase):
             ("runtime", {"wrf": {"identity": "sha256:" + "f" * 64}}),
         ):
             with self.subTest(field=field):
-                index = json.loads(self.index_path.read_text(encoding="utf-8"))
+                index = copy.deepcopy(self.original_index)
                 index[field] = invalid
                 self.rewrite_index(index)
-                with self.assertRaises(SimulationResultError):
-                    self.service.manifest(JOB_ID)
-                self.setUp()
+                try:
+                    with self.assertRaises(SimulationResultError):
+                        self.service.manifest(JOB_ID)
+                finally:
+                    self.rewrite_index(copy.deepcopy(self.original_index))
 
 
 if __name__ == "__main__":
