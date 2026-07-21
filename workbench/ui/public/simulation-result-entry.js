@@ -34,12 +34,14 @@
         if (!jobId) return;
         event.currentTarget.disabled = true;
         try {
+          const encodedJobId = encodeURIComponent(jobId);
           const payload = await resultRequestJson(
-            `/api/simulations/${encodeURIComponent(jobId)}/results`,
+            `/api/simulations/${encodedJobId}/results`,
           );
           const viewerUrl = payload?.results?.viewer_url;
-          if (typeof viewerUrl !== 'string' || !viewerUrl.startsWith('/jobs/')) {
-            throw new Error('The result viewer URL is invalid.');
+          const expectedViewerUrl = `/jobs/${encodedJobId}/results/`;
+          if (viewerUrl !== expectedViewerUrl) {
+            throw new Error('The result viewer URL does not match the selected job.');
           }
           global.location.assign(viewerUrl);
         } catch (error) {
