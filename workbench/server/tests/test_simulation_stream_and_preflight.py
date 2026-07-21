@@ -79,6 +79,8 @@ class SimulationStreamAndPreflightTests(unittest.TestCase):
                 "text/event-stream; charset=utf-8",
                 handler.headers["Content-Type"],
             )
+            self.assertEqual("close", handler.headers["Connection"])
+            self.assertTrue(handler.close_connection)
             self.assertNotIn(cursor, event_ids(rendered))
             self.assertEqual(
                 [event["sequence"] for event in replay], event_ids(rendered)
@@ -92,6 +94,23 @@ class SimulationStreamAndPreflightTests(unittest.TestCase):
                 with self.subTest(invalid=invalid):
                     with self.assertRaises(ValueError):
                         parse_event_cursor(invalid)
+
+    def test_record_event_returns_the_new_event_after_large_history(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="simulation-event-page-") as temporary:
+            root = Path(temporary)
+            _data, _specifications, store = prepare_environment(root)
+            job = store.create_job(SPEC_KEY)
+            for index in range(505):
+                appended = store.record_event(
+                    job["id"],
+                    event_type="test_event",
+                    status="READY",
+                    message=f"event {index}",
+                    details={"index": index},
+                )
+            self.assertEqual(506, appended["sequence"])
+            self.assertEqual("event 504", appended["message"])
+            self.assertEqual(504, appended["details"]["index"])
 
     def test_resource_estimate_rejects_insufficient_host(self) -> None:
         specification = {
@@ -187,14 +206,19 @@ class SimulationStreamAndPreflightTests(unittest.TestCase):
             result = store.get_job(job["id"])
             self.assertEqual("FAILED", result["status"])
             self.assertEqual("EXECUTOR_UNAVAILABLE", result["error"]["code"])
-            preflight_events = [
+            event_types = [event["type"] for event in result["events"]]
+            self.assertEqual(1, event_types.count("resource_preflight_passed"))
+            self.assertLess(
+                event_types.index("resource_preflight_passed"),
+                event_types.index("step_started"),
+            )
+            preflight_event = next(
                 event
                 for event in result["events"]
                 if event["type"] == "resource_preflight_passed"
-            ]
-            self.assertEqual(1, len(preflight_events))
+            )
             self.assertFalse(
-                preflight_events[0]["details"]["assessment"]["estimate_available"]
+                preflight_event["details"]["assessment"]["estimate_available"]
             )
 
     def test_atomic_claim_respects_active_job_limit(self) -> None:
