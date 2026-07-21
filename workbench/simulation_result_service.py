@@ -12,6 +12,19 @@ from workbench._simulation_result_service_core import *  # noqa: F401,F403
 class SimulationResultService(_core.SimulationResultService):
     """Checksum-indexed result access tied to the frozen pipeline identity."""
 
+    def viewer_html(self, job_id: str) -> bytes:
+        html = super().viewer_html(job_id).decode("utf-8")
+        marker = "</body>"
+        script = '<script src="/web/result-viewer-tools.js"></script>'
+        if script in html:
+            return html.encode("utf-8")
+        if marker not in html:
+            raise _core.SimulationResultError(
+                "viewer_unavailable",
+                "The integrated WRF result viewer cannot load its map tools.",
+            )
+        return html.replace(marker, f"{script}\n{marker}", 1).encode("utf-8")
+
     def _result_context(
         self, job_id: str
     ) -> tuple[dict[str, Any], Any, dict[str, Any], dict[str, Any]]:

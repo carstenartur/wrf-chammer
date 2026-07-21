@@ -1,0 +1,86 @@
+name: Result Viewer Geography and Export Tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'workbench/web/result-viewer-tools.js'
+      - 'workbench/simulation_result_service.py'
+      - 'workbench/server/application.py'
+      - 'workbench/server/tests/test_result_viewer_tools.js'
+      - 'workbench/server/tests/test_result_viewer_tools_http.py'
+      - 'workbench/server/tests/test_integrated_result_viewer.py'
+      - 'workbench/e2e/result-viewer-geography-exports.spec.js'
+      - 'workbench/e2e/result-viewer-playwright.config.js'
+      - 'doc/RESULT_VIEWER_GEOGRAPHY_EXPORTS.md'
+      - '.github/workflows/result-viewer-geography-export-tests.yml'
+  push:
+    branches: [master, develop]
+    paths:
+      - 'workbench/web/result-viewer-tools.js'
+      - 'workbench/simulation_result_service.py'
+      - 'workbench/server/application.py'
+      - 'workbench/server/tests/test_result_viewer_tools.js'
+      - 'workbench/server/tests/test_result_viewer_tools_http.py'
+      - 'workbench/server/tests/test_integrated_result_viewer.py'
+      - 'workbench/e2e/result-viewer-geography-exports.spec.js'
+      - 'workbench/e2e/result-viewer-playwright.config.js'
+      - 'doc/RESULT_VIEWER_GEOGRAPHY_EXPORTS.md'
+      - '.github/workflows/result-viewer-geography-export-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .
+
+concurrency:
+  group: result-viewer-geography-exports-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  geography-exports:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Verify syntax
+        run: |
+          python3 -m py_compile \
+            workbench/simulation_result_service.py \
+            workbench/server/application.py \
+            workbench/server/tests/test_result_viewer_tools_http.py
+          node --check workbench/web/result-viewer-tools.js
+          node --check workbench/server/tests/test_result_viewer_tools.js
+          node --check workbench/e2e/result-viewer-geography-exports.spec.js
+          node --check workbench/e2e/result-viewer-playwright.config.js
+
+      - name: Test north-up mapping and exports
+        run: node workbench/server/tests/test_result_viewer_tools.js
+
+      - name: Test integrated same-origin tool delivery
+        run: python3 workbench/server/tests/test_result_viewer_tools_http.py -v
+
+      - name: Re-run integrated result integrity contract
+        run: python3 workbench/server/tests/test_integrated_result_viewer.py -v
+
+      - name: Install Playwright Chromium
+        working-directory: workbench/e2e
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: Browser-test geography, point distance and downloads
+        working-directory: workbench/e2e
+        run: >-
+          npx playwright test result-viewer-geography-exports.spec.js
+          --config=result-viewer-playwright.config.js
+          --project=chromium

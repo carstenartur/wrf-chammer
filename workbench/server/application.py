@@ -27,9 +27,14 @@ class WorkbenchApplicationHandler(_BaseWorkbenchApplicationHandler):
     """Add an integrated viewer for products indexed by a successful job."""
 
     def _handle_static_path(self, path: str) -> bool:
-        if path == "/web/simulation-result-entry.js":
+        scripts = {
+            "/web/simulation-result-entry.js": "simulation-result-entry.js",
+            "/web/result-viewer-tools.js": "result-viewer-tools.js",
+        }
+        filename = scripts.get(path)
+        if filename:
             self._send_static_file(
-                self.server.web_dir / "simulation-result-entry.js",
+                self.server.web_dir / filename,
                 "application/javascript; charset=utf-8",
             )
             return True
@@ -124,8 +129,8 @@ class WorkbenchApplicationHandler(_BaseWorkbenchApplicationHandler):
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header(
             "Content-Security-Policy",
-            "default-src 'self'; script-src 'unsafe-inline'; "
-            "style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; "
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+            "style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; "
             "object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
         )
         self.end_headers()
