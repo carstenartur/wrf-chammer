@@ -2,8 +2,9 @@
 """Hardened public worker for persistent real WPS/WRF simulations.
 
 The private core implements the executor protocol and artifact handling. This
-facade adds strict interruption semantics, defensive checksum validation and
-portable resource accounting.
+facade adds strict interruption semantics, defensive checksum validation,
+portable resource accounting and resource-aware admission before a queued job
+can start its first step.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ import signal
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from workbench._simulation_worker_core import (
     ArtifactResult,
@@ -30,6 +31,10 @@ from workbench._simulation_worker_core import (
 )
 from workbench.era5_service import Era5DataService
 from workbench.pipeline_specification_service import PipelineSpecificationService
+from workbench.simulation_resources import (
+    collect_host_resources,
+    evaluate_resource_admission,
+)
 from workbench.simulation_store import SimulationStore, SimulationStoreError
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -54,6 +59,16 @@ def _max_rss_bytes(value: Any, *, platform: str | None = None) -> int:
         return 0
     current_platform = platform or sys.platform
     return measured if current_platform == "darwin" else measured * 1024
+
+
+def _positive_int(value: Any, default: int) -> int:
+    if isinstance(value, bool):
+        return default
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
 
 
 class ExternalStepExecutor(_CoreExternalStepExecutor):
@@ -87,7 +102,113 @@ class ExternalStepExecutor(_CoreExternalStepExecutor):
 
 
 class SimulationWorker(_CoreSimulationWorker):
-    """Worker with classified interruption and validated immutable input metadata."""
+    """Worker with classified interruption and resource-aware job admission."""
+
+    def __init__(
+        self,
+        repo_root: Path,
+        store: SimulationStore,
+        data_service: Era5DataService,
+        specification_service: PipelineSpecificationService,
+        *,
+        worker_id: str | None = None,
+        executor: ExternalStepExecutor | None = None,
+        poll_seconds: float = 1.0,
+        max_active_jobs: int | None = None,
+        resource_provider: Callable[[], dict[str, Any]] | None = None,
+    ):
+        super().__init__(
+            repo_root,
+            store,
+            data_service,
+            specification_service,
+            worker_id=worker_id,
+            executor=executor,
+            poll_seconds=poll_seconds,
+        )
+        configured_limit = os.environ.get("WRF_CHAMMER_MAX_ACTIVE_SIMULATIONS", "1")
+        self.max_active_jobs = _positive_int(
+            max_active_jobs if max_active_jobs is not None else configured_limit,
+            1,
+        )
+        self.resource_provider = resource_provider or (
+            lambda: collect_host_resources(self.repo_root)
+        )
+
+    def run(self, *, once: bool = False) -> int:
+        self.store.recover_interrupted_jobs()
+        while not self._stopping.is_set():
+            candidate = self.store.next_queued_job()
+            if candidate is None:
+                if once:
+                    return 0
+                self._stopping.wait(self.poll_seconds)
+                continue
+
+            specification = self.specification_service.get(
+                candidate["specification_key"]
+            )
+            assessment = evaluate_resource_admission(
+                specification, self.resource_provider()
+            )
+            if not assessment["admitted"]:
+                self.store.add_resource_measurement(
+                    candidate["id"],
+                    step_id=None,
+                    metadata={
+                        "phase": "preflight",
+                        "worker_id": self.worker_id,
+                        "assessment": assessment,
+                    },
+                )
+                self.store.reject_queued_job(
+                    candidate["id"],
+                    code="INSUFFICIENT_RESOURCES",
+                    message=(
+                        "The simulation cannot start because the host does not "
+                        "meet the frozen minimum resource estimate."
+                    ),
+                    details={"assessment": assessment},
+                )
+                if once:
+                    return 0
+                continue
+
+            job = self.store.claim_job(
+                candidate["id"],
+                self.worker_id,
+                max_active_jobs=self.max_active_jobs,
+            )
+            if job is None:
+                if once:
+                    return 0
+                self._stopping.wait(self.poll_seconds)
+                continue
+
+            self.store.add_resource_measurement(
+                job["id"],
+                step_id=job.get("current_step_id"),
+                metadata={
+                    "phase": "preflight",
+                    "worker_id": self.worker_id,
+                    "assessment": assessment,
+                },
+            )
+            self.store.record_event(
+                job["id"],
+                event_type="resource_preflight_passed",
+                status=job["status"],
+                step_id=job.get("current_step_id"),
+                message=(
+                    "Resource preflight passed; the simulation worker claimed "
+                    "the queued job."
+                ),
+                details={"assessment": assessment},
+            )
+            self.execute_job(job["id"])
+            if once:
+                return 0
+        return 0
 
     def execute_job(self, job_id: str) -> dict[str, Any]:
         while True:

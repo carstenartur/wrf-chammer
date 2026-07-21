@@ -9,7 +9,7 @@ import threading
 from http import HTTPStatus
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from workbench.era5_credential_service import Era5CredentialValidationService
 from workbench.era5_download_manager import Era5DownloadManager
@@ -18,6 +18,10 @@ from workbench.server._application_base import (
     build_arg_parser,
 )
 from workbench.server.server import ApiError, WorkbenchApiServer
+from workbench.simulation_event_stream import (
+    parse_event_cursor,
+    stream_simulation_events,
+)
 from workbench.simulation_store import SimulationStore, SimulationStoreError
 
 _SIMULATIONS_PATH = "/api/simulations"
@@ -27,15 +31,7 @@ class WorkbenchApplicationHandler(_BaseWorkbenchApplicationHandler):
     """Extend the established Workbench API with persistent simulation records."""
 
     def _wizard_preview(self, request: dict[str, Any]) -> dict[str, Any]:
-        """Create a valid planning preview while retaining real-run intent.
-
-        A guided preview precedes ERA5 plan preparation, so it cannot yet be a
-        valid ``era5-wrf`` execution configuration because that mode requires a
-        prepared ERA5 config path. The preview therefore uses the validated
-        ``dry-run`` planning mode and records the requested product mode in
-        metadata. The immutable specification later supplies the real ERA5 plan
-        and pinned runtime identities.
-        """
+        """Create a valid planning preview while retaining real-run intent."""
 
         normalized = dict(request)
         requested_real_data = normalized.get("mode") == "real-data"
@@ -53,9 +49,14 @@ class WorkbenchApplicationHandler(_BaseWorkbenchApplicationHandler):
         return preview
 
     def _handle_static_path(self, path: str) -> bool:
-        if path == "/web/simulation-job-queue.js":
+        static_scripts = {
+            "/web/simulation-job-queue.js": "simulation-job-queue.js",
+            "/web/simulation-job-stream.js": "simulation-job-stream.js",
+        }
+        filename = static_scripts.get(path)
+        if filename:
             self._send_static_file(
-                self.server.web_dir / "simulation-job-queue.js",
+                self.server.web_dir / filename,
                 "application/javascript; charset=utf-8",
             )
             return True
@@ -71,8 +72,24 @@ class WorkbenchApplicationHandler(_BaseWorkbenchApplicationHandler):
             self.server.simulation_store = store
         return store
 
+    @staticmethod
+    def _event_cursor(query: dict[str, list[str]], header: str | None) -> int:
+        candidate = header
+        if candidate is None:
+            values = query.get("after")
+            candidate = values[0] if values else None
+        try:
+            return parse_event_cursor(candidate)
+        except ValueError as exc:
+            raise ApiError(
+                HTTPStatus.BAD_REQUEST,
+                "invalid_event_cursor",
+                str(exc),
+            ) from exc
+
     def do_GET(self) -> None:  # noqa: N802
-        path = urlparse(self.path).path.rstrip("/") or "/"
+        parsed = urlparse(self.path)
+        path = parsed.path.rstrip("/") or "/"
         if path != _SIMULATIONS_PATH and not path.startswith(
             f"{_SIMULATIONS_PATH}/"
         ):
@@ -80,18 +97,37 @@ class WorkbenchApplicationHandler(_BaseWorkbenchApplicationHandler):
             return
         try:
             self._require_local_client()
+            query = parse_qs(parsed.query)
             if path == _SIMULATIONS_PATH:
                 jobs = self._simulation_store().list_jobs()
                 payload = {"ok": True, "count": len(jobs), "simulations": jobs}
             else:
                 suffix = path[len(f"{_SIMULATIONS_PATH}/") :]
+                if suffix.endswith("/events/stream"):
+                    job_id = unquote(suffix[: -len("/events/stream")])
+                    store = self._simulation_store()
+                    store.get_job(job_id)
+                    cursor = self._event_cursor(
+                        query, self.headers.get("Last-Event-ID")
+                    )
+                    stream_simulation_events(
+                        self,
+                        store,
+                        job_id,
+                        after_sequence=cursor,
+                    )
+                    return
                 if suffix.endswith("/events"):
                     job_id = unquote(suffix[: -len("/events")])
-                    job = self._simulation_store().get_job(job_id)
+                    cursor = self._event_cursor(query, None)
+                    events = self._simulation_store().events_after(
+                        job_id, after_sequence=cursor, limit=500
+                    )
                     payload = {
                         "ok": True,
-                        "count": len(job["events"]),
-                        "events": job["events"],
+                        "count": len(events),
+                        "after": cursor,
+                        "events": events,
                     }
                 elif suffix.endswith("/artifacts"):
                     job_id = unquote(suffix[: -len("/artifacts")])
@@ -178,6 +214,9 @@ class WorkbenchApplicationHandler(_BaseWorkbenchApplicationHandler):
             "invalid_measurement",
             "invalid_progress",
             "invalid_error",
+            "invalid_event",
+            "invalid_event_cursor",
+            "invalid_concurrency_limit",
         }:
             status = HTTPStatus.UNPROCESSABLE_ENTITY
         elif exc.code in {
