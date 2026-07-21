@@ -1,21 +1,64 @@
 # WRF Workbench User Guide
 
-This guide walks through the local Workbench UI using screenshots generated from
-the Storm Xaver browser flow.
+This guide explains the local WRF Workbench through the Storm Xaver workflow. It
+covers domain planning, real ERA5 acquisition, persistent simulation records and
+the separate acceptance path for computed weather-map results.
 
-Generate or refresh the regular UI screenshots with:
+## What the screenshots do — and do not — show
+
+The guide uses three different visual categories. They must not be confused:
+
+| Screenshot | Meaning | Contains computed weather? |
+|---|---|---:|
+| `xaver-01` to `xaver-06` | Search, configuration, planning, dry-run status and logs | No |
+| `xaver-03b-map-domain-wizard.png` | Geographic basemap plus the selected WRF domain | No |
+| `xaver-07-weather-map.png` | A rendered layer from real WRF output | Yes |
+
+The normal documentation screenshot command generates only the first two
+categories. A green **User Guide Screenshots** workflow therefore proves that the
+UI flow and geographic planning map render correctly; it does **not** prove that
+WRF produced a meteorological field.
+
+For normal interactive use, the planning widget loads OpenStreetMap tiles. The
+deterministic CI screenshot uses the explicit URL option
+`?basemap=natural-earth` and a small local Natural Earth vector subset so that
+country outlines remain visible without contacting an external tile service.
+Both are geographic context only. Neither is weather data.
+
+The computed result image `xaver-07-weather-map.png` is intentionally absent until
+a complete real-data run has produced WRF-proven visualization artifacts and the
+separate result-map test has verified that the selected field is spatially
+varying and visibly rendered.
+
+## Generate the regular UI screenshots
+
+From the repository root:
 
 ```bash
 sh ci/generate-user-guide-screenshots.sh
 ```
 
-The same script runs in CI and uploads review artifacts. Intentionally changed
-screenshots must be reviewed and committed together with the corresponding UI
-change. The screenshots are stored in:
+The command builds the modern UI, starts the real local Workbench server in the
+browser integration environment and writes screenshots to:
 
 ```text
 doc/user-guide/screenshots/
 ```
+
+It captures:
+
+```text
+xaver-01-search.png
+xaver-02-event-selected.png
+xaver-03-domain-resolution.png
+xaver-03b-map-domain-wizard.png
+xaver-03c-era5-data-plan.png
+xaver-04-preview-config.png
+xaver-05-dry-run-status.png
+xaver-06-logs.png
+```
+
+The command does not generate `xaver-07-weather-map.png`.
 
 ## 1. Start the local Workbench
 
@@ -32,18 +75,15 @@ Open:
 http://127.0.0.1:8080/
 ```
 
-The start screen shows system readiness, guided map planning, ERA5 input-data
-planning, persistent download jobs and managed-cache administration, followed by
-event search, preset selection, job preview and status/log panels.
+The page contains system readiness, guided geographic planning, ERA5 data
+controls, persistent simulation records and the original event/preset workflow.
 
 ![Xaver search screen](user-guide/screenshots/xaver-01-search.png)
 
 ## 2. Search and select Storm Xaver
 
-The UI starts with `Xaver` as a useful demo query. Click `Select xaver` to load
-its event details from the Workbench event catalogue.
-
-The browser does not parse event files directly; it calls:
+The UI starts with `Xaver` as a useful reference query. Select the Xaver result to
+load event metadata and curated presets from the server-side catalogue:
 
 ```http
 GET /api/events?q=xaver
@@ -52,23 +92,17 @@ GET /api/events/xaver
 
 ![Xaver event selected](user-guide/screenshots/xaver-02-event-selected.png)
 
-## 3. Choose the simulation domain and real input data
+## 3. Select a simulation domain
 
-There are two supported domain-planning paths. The guided path additionally
-connects the validated area and period to a reproducible ERA5 request plan and a
-persistent downloader job.
+There are two supported planning paths.
 
-### 3.1 Guided map planning
+### 3.1 Guided geographic planning
 
-The **Guided simulation planning** section uses a real OpenStreetMap basemap for
-geographic context. It does not create or alter weather data.
+The **Guided simulation planning** section provides an interactive geographic
+map. Select **Draw simulation area** and drag a rectangle, or enter coordinates
+with the keyboard-accessible numeric fields.
 
-Click **Draw simulation area**, then drag a rectangle from one corner of the desired
-domain to the opposite corner. The map selection updates west, south, east and
-north. The coordinate fields remain available as a keyboard-accessible alternative
-and update the rectangle in the opposite direction.
-
-For the Xaver reference plan, the defaults are:
+The Xaver reference values are:
 
 ```text
 Bounds:     2.0–14.0° E, 51.0–58.0° N
@@ -77,38 +111,54 @@ Profile:    balanced regional
 Resolution: 9 km
 ```
 
-Click `Plan domain and preview job`. The browser sends the geographic bounds and
-quality profile to the server:
+Select **Plan domain and preview job**. The browser calls:
 
 ```http
 POST /api/wizard/preview
 ```
 
-The server derives the domain centre, physical extent, `e_we`, `e_sn`, time-step
-recommendation and transparent estimates for runtime, RAM, ERA5 input and WRF
-output. The result includes a validated Workbench job configuration; users do not
-need to edit JSON or namelists.
+The server derives:
 
-![Guided Xaver map-domain plan with grid and resource estimates](user-guide/screenshots/xaver-03b-map-domain-wizard.png)
+- domain centre and physical extent;
+- `e_we` and `e_sn`;
+- grid spacing and recommended time step;
+- output-frame count;
+- estimated RAM, storage and wall-clock range;
+- a schema-valid preview configuration.
 
-Expert controls can override grid spacing, vertical levels and output interval.
-All overrides are validated server-side.
+The blue rectangle is the planned model domain. Country outlines, seas and place
+labels are geographic context. No meteorological values are calculated in this
+view.
 
-For technical details and assumptions, see
-[`SIMULATION_WIZARD.md`](SIMULATION_WIZARD.md).
+![Guided Xaver map-domain plan with geographic context, grid and resource estimates](user-guide/screenshots/xaver-03b-map-domain-wizard.png)
 
-### 3.2 Plan real ERA5 boundary data
+Expert controls may override grid spacing, vertical levels and output interval.
+All overrides are validated by the server. See
+[`SIMULATION_WIZARD.md`](SIMULATION_WIZARD.md) for the assumptions.
 
-After the guided simulation preview is valid, open **Plan ERA5 boundary data** and
-select `Refresh data status`. The status cards show:
+### 3.2 Curated presets
 
-- whether local Copernicus CDS credentials are configured;
+The preset workflow remains useful for tested reference configurations:
+
+```text
+Domain:     northern-germany-27km
+Resolution: quick-preview
+Mode:       dry-run
+```
+
+![Xaver domain and resolution](user-guide/screenshots/xaver-03-domain-resolution.png)
+
+## 4. Plan real ERA5 boundary data
+
+A valid guided preview can be converted into a canonical ERA5 request plan.
+Refresh the data status first. The panel reports:
+
+- whether Copernicus CDS credentials are configured;
 - whether the managed cache is writable;
-- how many content-addressed ERA5 plans already exist;
-- whether the latest guided simulation preview is available.
+- how many content-addressed plans exist;
+- whether a guided preview is available.
 
-Select `Plan real ERA5 data`. The browser requests a canonical data plan from the
-server:
+Select **Plan real ERA5 data**. The browser sends:
 
 ```http
 POST /api/data/era5/plan
@@ -121,16 +171,10 @@ Content-Type: application/json
 }
 ```
 
-For the reference Xaver period, the plan contains four real ERA5 requests:
-
-```text
-2013-12-05: pressure levels + single levels
-2013-12-06: pressure levels + single levels
-Boundary times: 19 hourly time points including both endpoints
-```
-
-The panel displays the request count, estimated download size, cache coverage,
-stable plan key and provenance. It also states explicitly:
+For the reference period, the plan contains pressure-level and single-level
+requests for 5 and 6 December 2013, with 19 hourly boundary times including both
+endpoints. The UI shows request count, estimated size, cache coverage, stable plan
+key and provenance. It must state:
 
 ```text
 Artificial weather data: no
@@ -138,8 +182,7 @@ Artificial weather data: no
 
 ![Xaver ERA5 request plan with cache and provenance information](user-guide/screenshots/xaver-03c-era5-data-plan.png)
 
-Select `Prepare download files` to atomically write the reproducible plan and the
-downloader configuration into the managed cache:
+Select **Prepare download files** to atomically persist:
 
 ```text
 .era5-cache/<plan-key>/era5-plan.json
@@ -147,77 +190,68 @@ downloader configuration into the managed cache:
 .era5-cache/<plan-key>/era5-download-config.json
 ```
 
-This preparation operation performs no CDS request and returns
-`download_started: false`.
+Preparation does not contact CDS and returns `download_started: false`.
 
-### 3.3 Download and verify real ERA5 files
+## 5. Download and verify real ERA5 files
 
-The separate **Download and verify real ERA5 files** control starts the network
-operation explicitly. Select `Start real ERA5 download` after reviewing the plan.
-The browser calls:
+Select **Start real ERA5 download** only after reviewing the plan:
 
 ```http
 POST /api/data/era5/downloads
 ```
 
-The response is a persistent job record. The downloader runs in a separate process,
-so the HTTP request does not remain open for the duration of the transfer. The UI
-shows:
-
-- `QUEUED`, `RUNNING`, `CANCELLING`, `CANCELLED`, `FAILED` or `SUCCEEDED`;
-- completed and total requests;
-- the current request and retry attempt;
-- recent structured state events;
-- whether cancel or retry is currently allowed.
-
-The browser may be reloaded or closed. Use `Cancel safely` to stop a running process
-without misclassifying it as failed, or `Retry with cache reuse` after failure or
-cancellation. Files completed before the interruption remain in the content-addressed
-cache and are verified instead of downloaded again.
-
-A complete cache can be verified without CDS credentials. Missing files require a
-local `CDSAPI_KEY` or `.cdsapirc`; secret values never enter browser responses,
-job JSON or process command arguments.
-
-After successful verification the plan directory also contains:
+The downloader is a persistent background process rather than an open HTTP
+request. Its states are:
 
 ```text
-.era5-cache/<plan-key>/checksums.json
-.era5-cache/<plan-key>/provenance.json
-.era5-cache/<plan-key>/files/...
-.era5-cache/<plan-key>/downloads/<download-id>/era5-manifest.json
+QUEUED
+RUNNING
+CANCELLING
+CANCELLED
+FAILED
+SUCCEEDED
 ```
 
-For the API, integrity, security and recovery details, see
-[`ERA5_DATA_UI.md`](ERA5_DATA_UI.md) and
+The UI reports completed requests, current request, retry attempt and recent
+structured events. A cancelled or failed job can reuse already verified cache
+files.
+
+After successful verification, the plan directory contains:
+
+```text
+checksums.json
+provenance.json
+files/...
+downloads/<download-id>/era5-manifest.json
+```
+
+A complete cache can be verified without credentials. Missing files require a
+local `CDSAPI_KEY` or `.cdsapirc`; secret values never belong in browser responses,
+job JSON or command arguments.
+
+See [`ERA5_DATA_UI.md`](ERA5_DATA_UI.md) and
 [`ERA5_DATA_PLANNING.md`](ERA5_DATA_PLANNING.md).
 
-### 3.4 Inspect and clean the managed ERA5 cache
+## 6. Inspect the managed ERA5 cache
 
-The **Managed ERA5 cache** section is a global administration view. It lists each
-content-addressed plan and shows:
+The global cache view lists each plan with:
 
 - stored bytes and regular-file count;
 - request coverage and partial entries;
-- simulation period and domain bounds;
+- period and geographic bounds;
 - source, datasets and checksum/provenance availability;
 - creation, modification and last-use timestamps;
-- persistent ERA5 download jobs stored below the plan;
-- how many of those jobs are still active;
-- whether deletion is currently allowed.
+- dependent download jobs and active-state protection.
 
-Select `Refresh cache` before cleanup. The browser reads:
+The browser reads:
 
 ```http
 GET /api/data/era5/cache
 GET /api/data/era5/cache/{plan-key}
 ```
 
-`Delete cache entry` remains disabled while a dependent download job is `QUEUED`,
-`RUNNING` or `CANCELLING`. For an unused plan, the confirmation dialog names the
-plan key, released storage and number of persistent download-job records that will
-be removed. The deletion request includes the exact dependency snapshot most
-recently shown by the server:
+Deletion is rejected while a dependent download is active. A confirmed deletion
+includes the exact plan key and dependency snapshot:
 
 ```http
 POST /api/data/era5/cache/{plan-key}/delete
@@ -229,86 +263,57 @@ Content-Type: application/json
 }
 ```
 
-If a job was added or changed after the page was loaded, deletion is rejected and
-the view must be refreshed. Symlinked or non-canonical directories are never
-followed by the managed deletion path. A successful deletion is recorded without
-host paths or credentials in `.era5-cache/.audit/cache-events.jsonl`.
+See [`ERA5_CACHE_MANAGEMENT.md`](ERA5_CACHE_MANAGEMENT.md).
 
-At this stage the dependency warning covers persistent ERA5 download jobs. Later
-WPS/WRF simulation jobs are not yet represented as `InputDataset` references; that
-additional protection belongs to issue #46 and is not silently implied by this UI.
+## 7. Preview and run the dry-run workflow
 
-See [`ERA5_CACHE_MANAGEMENT.md`](ERA5_CACHE_MANAGEMENT.md) for the complete safety
-and recovery contract.
-
-### 3.5 Curated presets
-
-The existing preset path remains available. Select a domain and a resolution
-preset. It is useful for tested reference configurations and quick demonstrations.
-
-For the original Xaver screenshot flow:
-
-```text
-Domain:     northern-germany-27km
-Resolution: quick-preview
-Mode:       dry-run
-```
-
-![Xaver domain and resolution](user-guide/screenshots/xaver-03-domain-resolution.png)
-
-## 4. Preview the generated job config
-
-Click `Preview job config` in the preset workflow, or use the generated preview
-in the guided map workflow.
-
-The preset UI calls:
+The curated workflow previews a generated job through:
 
 ```http
 POST /api/jobs/preview
 ```
 
-The server delegates event lookup and job config generation to Workbench core
-logic. The browser only renders the returned config and validation status.
-
 ![Xaver generated config](user-guide/screenshots/xaver-04-preview-config.png)
 
-## 5. Start the dry-run
-
-Click `Start dry-run` or `Start planned dry-run`.
-
-The UI calls:
-
-```http
-POST /api/jobs
-```
-
-The local server executes the Workbench runner in a server-managed run
-directory. When the run completes, the status panel shows the job id, status,
-run directory, logs and output count.
+Select **Start dry-run** or **Start planned dry-run**. A dry-run validates and
+records intended workflow steps but does not download data or execute WPS/WRF.
 
 ![Xaver dry-run status](user-guide/screenshots/xaver-05-dry-run-status.png)
 
-## 6. Inspect logs
-
-The UI fetches logs through:
+Logs are read through:
 
 ```http
 GET /api/jobs/{id}/logs
 ```
 
-For the dry-run path, the logs show the planned WRF workflow steps without
-starting containers or downloading data.
-
 ![Xaver dry-run logs](user-guide/screenshots/xaver-06-logs.png)
 
-## 7. Inspect real computed weather-map results
+These screenshots are intentionally not weather maps.
 
-Weather-map documentation screenshots must be generated from real WRF
-visualization artifacts. The guide does not use artificial fields as stand-ins
-for result maps.
+## 8. Persistent simulation records
 
-After a real run has produced visualization artifacts containing `metadata.json`
-and `layers/`, capture the weather-map screenshot with:
+A real immutable pipeline specification can be used to create a persistent
+simulation record. Creation and execution intent remain separate:
+
+```text
+READY → QUEUED → RUNNING → SUCCEEDED | FAILED | CANCELLED
+```
+
+The queue/history view can show frozen inputs, runtime identities, ordered steps,
+events, artifacts and resource measurements. Queue state alone never implies that
+WRF has executed.
+
+## 9. Generate a computed weather-map screenshot
+
+This step is separate from regular screenshot CI. It requires an existing real
+visualization directory with:
+
+```text
+metadata.json
+layers/
+```
+
+Run:
 
 ```bash
 sh ci/generate-real-data-weather-map-screenshot.sh \
@@ -316,46 +321,43 @@ sh ci/generate-real-data-weather-map-screenshot.sh \
   max_wind10m
 ```
 
-This creates:
+The command refuses to create documentation output unless:
+
+- `metadata.json` declares `provenance.mode = "wrf"`;
+- at least one originating `wrfout` file is recorded;
+- the requested layer is a safe regular file;
+- the layer contains a spatially varying numeric field;
+- the browser canvas contains a sufficiently large, opaque and non-uniform render.
+
+Only then is this file created:
 
 ```text
 doc/user-guide/screenshots/xaver-07-weather-map.png
 ```
 
-Commit that PNG only if it was generated from real visualization artifacts. If no
-real-data screenshot is committed yet, this guide intentionally omits the weather
-map image.
+Commit it only after reviewing that it shows plausible meteorological structure.
+A real-data screenshot is not a full scientific validation of the simulation.
 
-## 8. Run the cached ERA5-WRF acceptance path
+At the time a checkout lacks `xaver-07-weather-map.png`, the honest interpretation
+is: **no reviewed real WRF result image has been committed yet**. The other
+screenshots remain useful documentation, but they do not substitute for that
+result.
 
-The browser UI now drives planning and ERA5 acquisition. The cacheable ERA5-WRF
-path is covered by the Xaver acceptance script:
+## 10. Updating screenshots
 
-```bash
-sh ci/test-xaver-demo.sh
-```
+For a normal UI change:
 
-That test verifies that the same Xaver scenario can create WPS/WRF namelists,
-pipeline metadata and visualization metadata using cached ERA5 input.
+1. Run `sh ci/generate-user-guide-screenshots.sh`.
+2. Review every generated PNG, especially visible map geography.
+3. Commit intentional screenshot changes with the UI and guide changes.
 
-For details, see:
+For a computed weather-result change:
 
-```text
-doc/XAVER_DEMO.md
-doc/ERA5_WRF_PIPELINE.md
-```
+1. Complete the real-data pipeline.
+2. Verify checksums and WRF provenance.
+3. Run the separate real-data screenshot command.
+4. Review the rendered field for nonblank, nonregular meteorological structure.
+5. Commit `xaver-07-weather-map.png` with its provenance and run documentation.
 
-## Updating screenshots
-
-When the UI changes intentionally:
-
-1. Run `sh ci/generate-user-guide-screenshots.sh` locally.
-2. Review the PNG files in `doc/user-guide/screenshots/`.
-3. Commit the updated UI screenshots together with the UI/user-guide change.
-
-When a real-data visualization changes intentionally, run the separate real-data
-weather-map screenshot script and commit `xaver-07-weather-map.png` only if it
-comes from real visualization artifacts.
-
-CI uploads generated regular UI screenshots as artifacts so reviewers can compare
-the browser output before merging. CI does not modify pull request branches.
+CI uploads regular screenshots as review artifacts. It does not modify pull
+request branches and it does not manufacture a real weather result.

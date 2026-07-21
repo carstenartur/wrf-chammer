@@ -1,13 +1,10 @@
 const fs = require('fs');
 const path = require('path');
 const { test, expect } = require('@playwright/test');
+const { installDocumentationTileProvider } = require('./documentation-tile-provider');
 
 const repoRoot = path.resolve(__dirname, '../..');
 const screenshotDir = path.join(repoRoot, 'doc', 'user-guide', 'screenshots');
-const transparentPng = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-  'base64',
-);
 
 async function capture(page, fileName) {
   fs.mkdirSync(screenshotDir, { recursive: true });
@@ -17,18 +14,42 @@ async function capture(page, fileName) {
   });
 }
 
-test.beforeEach(async ({ page }) => {
-  await page.route(/^https:\/\/[abc]\.tile\.openstreetmap\.org\//, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'image/png',
-      body: transparentPng,
-    });
+async function captureElement(locator, fileName) {
+  fs.mkdirSync(screenshotDir, { recursive: true });
+  await locator.screenshot({
+    path: path.join(screenshotDir, fileName),
   });
-});
+}
+
+async function gotoDocumentationWorkbench(page) {
+  const tileStats = await installDocumentationTileProvider(page);
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  const map = page.locator('#wizard-map');
+  await expect(map).toBeVisible();
+  await expect.poll(() => tileStats.requests).toBeGreaterThanOrEqual(4);
+  await expect.poll(() => tileStats.paths).toBeGreaterThan(0);
+  await expect.poll(() => tileStats.labels).toBeGreaterThan(0);
+  await expect.poll(() => map.locator('img.leaflet-tile-loaded').count()).toBeGreaterThanOrEqual(4);
+
+  await map.evaluate((element) => {
+    element.dataset.basemapReady = 'natural-earth';
+    element.setAttribute(
+      'aria-label',
+      'Interactive Natural Earth basemap for selecting the WRF simulation domain',
+    );
+    const attribution = document.querySelector('.simulation-map-attribution');
+    if (attribution) {
+      attribution.textContent =
+        'Offline documentation basemap rendered from Natural Earth public-domain geography. Numeric coordinate fields remain available as a keyboard-accessible alternative.';
+    }
+  });
+  await expect(map).toHaveAttribute('data-basemap-ready', 'natural-earth');
+  await expect(page.getByText(/Natural Earth public-domain geography/)).toBeVisible();
+  return tileStats;
+}
 
 test('capture the Xaver user-guide UI flow', async ({ page }) => {
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await gotoDocumentationWorkbench(page);
   await expect(page.getByRole('heading', { name: 'System readiness' })).toBeVisible();
   await expect(page.locator('.readiness-check').filter({ hasText: 'python' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Check again' })).toBeEnabled();
@@ -64,10 +85,12 @@ test('capture the Xaver user-guide UI flow', async ({ page }) => {
 });
 
 test('plan a map-selected Xaver domain without editing JSON', async ({ page }) => {
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  const tileStats = await gotoDocumentationWorkbench(page);
 
   await expect(page.getByRole('heading', { name: 'Draw a real map area and estimate the WRF job' })).toBeVisible();
-  await expect(page.locator('#wizard-map')).toBeVisible();
+  const map = page.locator('#wizard-map');
+  await expect(map).toBeVisible();
+  await expect.poll(() => tileStats.paths).toBeGreaterThan(0);
   await expect(page.locator('#wizard-west')).toHaveValue('2');
   await expect(page.locator('#wizard-north')).toHaveValue('58');
 
@@ -77,16 +100,15 @@ test('plan a map-selected Xaver domain without editing JSON', async ({ page }) =
   await expect(page.locator('#wizard-result')).toContainText('Recommended RAM');
   await expect(page.locator('#wizard-config-preview')).toContainText('"domain_source": "map-bounds"');
   await expect(page.locator('#wizard-config-preview')).toContainText('"quality_profile": "balanced"');
-  await capture(page, 'xaver-03b-map-domain-wizard.png');
+  await captureElement(page.locator('.simulation-wizard'), 'xaver-03b-map-domain-wizard.png');
 
   await page.getByRole('button', { name: 'Start planned dry-run' }).click();
   await expect(page.locator('#wizard-status')).toContainText('finished successfully', { timeout: 30_000 });
 });
 
 test('draw a new simulation rectangle directly on the map', async ({ page }) => {
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await gotoDocumentationWorkbench(page);
   const map = page.locator('#wizard-map');
-  await expect(map).toBeVisible();
 
   await page.getByRole('button', { name: 'Draw simulation area' }).click();
   await expect(page.getByText(/Drag from one corner/)).toBeVisible();
