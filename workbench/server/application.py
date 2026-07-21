@@ -27,12 +27,30 @@ class WorkbenchApplicationHandler(_BaseWorkbenchApplicationHandler):
     """Extend the established Workbench API with persistent simulation records."""
 
     def _wizard_preview(self, request: dict[str, Any]) -> dict[str, Any]:
-        """Normalize the UI label to the validated ERA5/WRF product mode."""
+        """Create a valid planning preview while retaining real-run intent.
+
+        A guided preview precedes ERA5 plan preparation, so it cannot yet be a
+        valid ``era5-wrf`` execution configuration because that mode requires a
+        prepared ERA5 config path. The preview therefore uses the validated
+        ``dry-run`` planning mode and records the requested product mode in
+        metadata. The immutable specification later supplies the real ERA5 plan
+        and pinned runtime identities.
+        """
 
         normalized = dict(request)
-        if normalized.get("mode") == "real-data":
-            normalized["mode"] = "era5-wrf"
-        return super()._wizard_preview(normalized)
+        requested_real_data = normalized.get("mode") == "real-data"
+        if requested_real_data:
+            normalized["mode"] = "dry-run"
+        preview = super()._wizard_preview(normalized)
+        if requested_real_data:
+            config = preview.get("config")
+            if isinstance(config, dict):
+                metadata = config.setdefault("metadata", {})
+                if isinstance(metadata, dict):
+                    metadata["requested_data_mode"] = "real-data"
+                    metadata["requested_execution_mode"] = "era5-wrf"
+            preview["requested_execution_mode"] = "era5-wrf"
+        return preview
 
     def _handle_static_path(self, path: str) -> bool:
         if path == "/web/simulation-job-queue.js":
