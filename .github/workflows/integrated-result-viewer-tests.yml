@@ -1,0 +1,72 @@
+name: Integrated Job Result Viewer Tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'workbench/simulation_result_service.py'
+      - 'workbench/server/application.py'
+      - 'workbench/server/_application_event_base.py'
+      - 'workbench/web/simulation-result-entry.js'
+      - 'workbench/ui/public/simulation-result-entry.js'
+      - 'workbench/web/index.html'
+      - 'workbench/ui/index.html'
+      - 'ci/sync-workbench-public-assets.py'
+      - 'workbench/server/tests/test_integrated_result_viewer.py'
+      - 'workbench/server/tests/test_simulation_result_entry_ui.js'
+      - 'doc/INTEGRATED_JOB_RESULT_VIEWER.md'
+      - '.github/workflows/integrated-result-viewer-tests.yml'
+  push:
+    branches: [master, develop]
+    paths:
+      - 'workbench/simulation_result_service.py'
+      - 'workbench/server/application.py'
+      - 'workbench/server/_application_event_base.py'
+      - 'workbench/web/simulation-result-entry.js'
+      - 'workbench/ui/public/simulation-result-entry.js'
+      - 'workbench/web/index.html'
+      - 'workbench/ui/index.html'
+      - 'ci/sync-workbench-public-assets.py'
+      - 'workbench/server/tests/test_integrated_result_viewer.py'
+      - 'workbench/server/tests/test_simulation_result_entry_ui.js'
+      - 'doc/INTEGRATED_JOB_RESULT_VIEWER.md'
+      - '.github/workflows/integrated-result-viewer-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .
+
+concurrency:
+  group: integrated-result-viewer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  viewer-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify syntax and canonical browser assets
+        run: |
+          python3 -m py_compile \
+            workbench/simulation_result_service.py \
+            workbench/server/_application_event_base.py \
+            workbench/server/application.py \
+            workbench/server/tests/test_integrated_result_viewer.py
+          node --check workbench/web/simulation-result-entry.js
+          node --check workbench/server/tests/test_simulation_result_entry_ui.js
+          python3 ci/sync-workbench-public-assets.py --check
+
+      - name: Test checksum-indexed HTTP result delivery
+        run: python3 workbench/server/tests/test_integrated_result_viewer.py -v
+
+      - name: Test direct successful-job viewer action
+        run: node workbench/server/tests/test_simulation_result_entry_ui.js
+
+      - name: Re-run browser asset build contract
+        run: python3 workbench/server/tests/test_ui_public_asset_build.py

@@ -16,6 +16,7 @@ ASSETS = (
     "real-pipeline-specification.js",
     "simulation-job-queue.js",
     "simulation-job-stream.js",
+    "simulation-result-entry.js",
 )
 
 
