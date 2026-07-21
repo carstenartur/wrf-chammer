@@ -42,6 +42,7 @@ RUN apt-get update \
         libnetcdf19 \
         libnetcdff7 \
         libstdc++6 \
+        python3 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /opt/wrf /opt/wrf
@@ -49,11 +50,18 @@ RUN mkdir -p /opt/wrf-smoke/bin /opt/wrf-smoke/test
 COPY --from=builder /opt/wrf-smoke/bin/ideal /opt/wrf-smoke/bin/ideal
 COPY --from=builder /opt/wrf-smoke/bin/wrf /opt/wrf-smoke/bin/wrf
 COPY --from=builder /opt/wrf-smoke/test/em_quarter_ss /opt/wrf-smoke/test/em_quarter_ss
+COPY ci/_run_wrf_step_core.py /usr/local/bin/_run_wrf_step_core.py
+COPY ci/run-wrf-step.py /usr/local/bin/run-wrf-step.py
 COPY ci/verify-wrf-runtime.sh /usr/local/bin/verify-wrf-runtime.sh
 COPY ci/smoke-test-wrf.sh /usr/local/bin/smoke-test-wrf.sh
 
-RUN chmod +x /usr/local/bin/verify-wrf-runtime.sh \
-    /usr/local/bin/smoke-test-wrf.sh \
+RUN chmod +x \
+        /usr/local/bin/run-wrf-step.py \
+        /usr/local/bin/verify-wrf-runtime.sh \
+        /usr/local/bin/smoke-test-wrf.sh \
+    && python3 -m py_compile \
+        /usr/local/bin/_run_wrf_step_core.py \
+        /usr/local/bin/run-wrf-step.py \
     && /usr/local/bin/verify-wrf-runtime.sh
 
 WORKDIR /opt/wrf/run

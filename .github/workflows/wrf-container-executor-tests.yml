@@ -1,0 +1,90 @@
+name: WRF Container Executor Tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'Dockerfile'
+      - 'ci/_run_wrf_step_core.py'
+      - 'ci/run-wrf-step.py'
+      - 'ci/verify-wrf-runtime.sh'
+      - 'workbench/_wrf_container_executor_core.py'
+      - 'workbench/wrf_container_executor.py'
+      - 'workbench/pipeline_container_executor.py'
+      - 'workbench/server/tests/test_wrf_container_executor.py'
+      - 'workbench/server/tests/test_wrf_step_runner.py'
+      - 'doc/REAL_WRF_CONTAINER_EXECUTOR.md'
+      - '.github/workflows/wrf-container-executor-tests.yml'
+  push:
+    branches: [master, develop]
+    paths:
+      - 'Dockerfile'
+      - 'ci/_run_wrf_step_core.py'
+      - 'ci/run-wrf-step.py'
+      - 'ci/verify-wrf-runtime.sh'
+      - 'workbench/_wrf_container_executor_core.py'
+      - 'workbench/wrf_container_executor.py'
+      - 'workbench/pipeline_container_executor.py'
+      - 'workbench/server/tests/test_wrf_container_executor.py'
+      - 'workbench/server/tests/test_wrf_step_runner.py'
+      - 'doc/REAL_WRF_CONTAINER_EXECUTOR.md'
+      - '.github/workflows/wrf-container-executor-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .
+
+concurrency:
+  group: wrf-container-executor-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  executor-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify syntax
+        run: |
+          python3 -m py_compile \
+            ci/_run_wrf_step_core.py \
+            ci/run-wrf-step.py \
+            workbench/_wrf_container_executor_core.py \
+            workbench/wrf_container_executor.py \
+            workbench/pipeline_container_executor.py \
+            workbench/server/tests/test_wrf_container_executor.py \
+            workbench/server/tests/test_wrf_step_runner.py
+          sh -n ci/verify-wrf-runtime.sh
+
+      - name: Test pinned WRF image and pipeline routing
+        shell: bash
+        run: |
+          python3 workbench/server/tests/test_wrf_container_executor.py -v \
+            > "${RUNNER_TEMP}/wrf-container-executor-tests.log" 2>&1 || {
+              cat "${RUNNER_TEMP}/wrf-container-executor-tests.log"
+              exit 1
+            }
+          cat "${RUNNER_TEMP}/wrf-container-executor-tests.log"
+
+      - name: Test WRF runtime handoff and bounded progress parsing
+        shell: bash
+        run: |
+          python3 workbench/server/tests/test_wrf_step_runner.py -v \
+            > "${RUNNER_TEMP}/wrf-step-runner-tests.log" 2>&1 || {
+              cat "${RUNNER_TEMP}/wrf-step-runner-tests.log"
+              exit 1
+            }
+          cat "${RUNNER_TEMP}/wrf-step-runner-tests.log"
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wrf-container-executor-test-logs
+          path: ${{ runner.temp }}/wrf-*-tests.log
+          if-no-files-found: error
