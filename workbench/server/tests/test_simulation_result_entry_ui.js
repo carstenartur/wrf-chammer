@@ -2,8 +2,11 @@
 
 const assert = require('node:assert/strict');
 
+const JOB_ID = 'sim-aaaaaaaaaaaa-bbbbbbbbbbbb';
+const VIEWER_URL = `/jobs/${JOB_ID}/results/`;
+
 class FakeButton {
-  constructor(jobId) {
+  constructor(jobId = JOB_ID) {
     this.dataset = { jobId };
     this.disabled = false;
     this.listeners = new Map();
@@ -17,8 +20,8 @@ class FakeButton {
 }
 
 class FakeQueue {
-  constructor() {
-    this.button = new FakeButton('sim-aaaaaaaaaaaa-bbbbbbbbbbbb');
+  constructor(jobId = JOB_ID) {
+    this.button = new FakeButton(jobId);
     this.errors = [];
     this.shadowRoot = {
       querySelector: (selector) => selector === '[data-view-results]' ? this.button : null,
@@ -41,12 +44,7 @@ global.location = { assign: (value) => assigned.push(value) };
 global.fetch = async () => ({
   ok: true,
   async json() {
-    return {
-      ok: true,
-      results: {
-        viewer_url: '/jobs/sim-aaaaaaaaaaaa-bbbbbbbbbbbb/results/',
-      },
-    };
+    return { ok: true, results: { viewer_url: VIEWER_URL } };
   },
 });
 
@@ -57,22 +55,21 @@ const {
 
 (async () => {
   assert.equal(resultButton({ status: 'READY' }), '');
-  assert.match(resultButton({
-    id: 'sim-aaaaaaaaaaaa-bbbbbbbbbbbb',
-    status: 'SUCCEEDED',
-  }), /View results/);
+  assert.equal(resultButton({ status: 'SUCCEEDED' }), '');
+  assert.equal(resultButton({ status: 'SUCCEEDED', id: '' }), '');
+  assert.match(resultButton({ id: JOB_ID, status: 'SUCCEEDED' }), /View results/);
 
   enhanceSimulationQueue(FakeQueue);
   const queue = new FakeQueue();
   assert.equal(queue.renderActions({ status: 'READY' }), '<button>Queue</button>');
-  assert.match(queue.renderActions({
-    id: 'sim-aaaaaaaaaaaa-bbbbbbbbbbbb',
-    status: 'SUCCEEDED',
-  }), /data-view-results/);
+  assert.match(
+    queue.renderActions({ id: JOB_ID, status: 'SUCCEEDED' }),
+    /data-view-results/,
+  );
   queue.bindEvents();
   assert.equal(queue.originalBindings, true);
   await queue.button.click();
-  assert.deepEqual(assigned, ['/jobs/sim-aaaaaaaaaaaa-bbbbbbbbbbbb/results/']);
+  assert.deepEqual(assigned, [VIEWER_URL]);
   assert.equal(queue.errors.length, 0);
 
   global.fetch = async () => ({
@@ -86,6 +83,21 @@ const {
   await failing.button.click();
   assert.deepEqual(failing.errors, ['Result checksum changed.']);
   assert.equal(failing.button.disabled, false);
+
+  global.fetch = async () => ({
+    ok: true,
+    async json() {
+      return { ok: true, results: { viewer_url: '/jobs/another/results/' } };
+    },
+  });
+  const mismatched = new FakeQueue();
+  mismatched.bindEvents();
+  await mismatched.button.click();
+  assert.deepEqual(
+    mismatched.errors,
+    ['The result viewer URL does not match the selected job.'],
+  );
+  assert.deepEqual(assigned, [VIEWER_URL]);
 
   console.log('Simulation result entry UI tests passed');
 })().catch((error) => {
