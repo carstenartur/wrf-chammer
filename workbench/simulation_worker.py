@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import sys
 from typing import Any
 
 import workbench._simulation_worker_preflight_core as _core
@@ -81,6 +80,10 @@ class SimulationWorker(_core.SimulationWorker):
 
 
 _core.SimulationWorker = SimulationWorker
+
+# Preserve existing explicit imports used by worker safety tests and callers.
+_max_rss_bytes = _core._max_rss_bytes
+_positive_int = _core._positive_int
 
 
 def main(argv: list[str] | None = None) -> int:
