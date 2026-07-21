@@ -47,7 +47,12 @@ def stream_simulation_events(
     monotonic: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
 ) -> None:
-    """Write an SSE replay/live stream and return after terminal completion or timeout."""
+    """Write a finite replay/live SSE response.
+
+    The response closes after terminal completion or the bounded timeout. Native
+    ``EventSource`` reconnects with ``Last-Event-ID`` and therefore resumes from
+    the next persistent sequence without duplicates.
+    """
 
     timeout = max(0.1, min(300.0, float(timeout_seconds)))
     poll = max(0.05, min(5.0, float(poll_seconds)))
@@ -58,9 +63,10 @@ def stream_simulation_events(
     handler.send_response(200)
     handler.send_header("Content-Type", "text/event-stream; charset=utf-8")
     handler.send_header("Cache-Control", "no-store")
-    handler.send_header("Connection", "keep-alive")
+    handler.send_header("Connection", "close")
     handler.send_header("X-Accel-Buffering", "no")
     handler.end_headers()
+    handler.close_connection = True
     handler.wfile.write(b"retry: 1000\n\n")
     handler.wfile.flush()
 
