@@ -1,0 +1,97 @@
+name: Real Xaver Acceptance Contract Tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'ci/_run_real_xaver_acceptance_core.py'
+      - 'ci/run-real-xaver-acceptance.py'
+      - 'workbench/server/tests/test_real_xaver_acceptance.py'
+      - 'doc/REAL_XAVER_PERSISTENT_ACCEPTANCE.md'
+      - '.github/workflows/real-xaver-persistent-acceptance.yml'
+      - '.github/workflows/real-xaver-acceptance-contract-tests.yml'
+  push:
+    branches: [master, develop]
+    paths:
+      - 'ci/_run_real_xaver_acceptance_core.py'
+      - 'ci/run-real-xaver-acceptance.py'
+      - 'workbench/server/tests/test_real_xaver_acceptance.py'
+      - 'doc/REAL_XAVER_PERSISTENT_ACCEPTANCE.md'
+      - '.github/workflows/real-xaver-persistent-acceptance.yml'
+      - '.github/workflows/real-xaver-acceptance-contract-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .
+
+concurrency:
+  group: real-xaver-acceptance-contract-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  acceptance-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Verify acceptance command syntax
+        run: |
+          python3 -m py_compile \
+            ci/_run_real_xaver_acceptance_core.py \
+            ci/run-real-xaver-acceptance.py \
+            workbench/server/tests/test_real_xaver_acceptance.py
+
+      - name: Test planning, real-data and result integrity contracts
+        run: python3 workbench/server/tests/test_real_xaver_acceptance.py -v
+
+      - name: Verify manual workflow security and self-hosted scope
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/real-xaver-persistent-acceptance.yml')
+          workflow = path.read_text(encoding='utf-8')
+          required = [
+              'workflow_dispatch:',
+              'runs-on: [self-hosted, linux, x64, wrf-chammer-real]',
+              'cancel-in-progress: false',
+              'ci/run-real-xaver-acceptance.py',
+              'INPUT_PLAN_KEY: ${{ inputs.plan_key }}',
+              'INPUT_CACHE_ROOT: ${{ inputs.cache_root }}',
+              'INPUT_GEOG_ROOT: ${{ inputs.geog_root }}',
+              '[[ "${INPUT_PLAN_KEY}" =~ ^[0-9a-f]{64}$ ]]',
+          ]
+          missing = [value for value in required if value not in workflow]
+          if missing:
+              raise SystemExit(f'Manual real-Xaver workflow contract is incomplete: {missing}')
+          if 'pull_request:' in workflow or 'push:' in workflow:
+              raise SystemExit('Real-Xaver model execution must not run automatically on pull requests or pushes')
+
+          in_run_block = False
+          run_indent = -1
+          unsafe = []
+          for number, line in enumerate(workflow.splitlines(), start=1):
+              stripped = line.lstrip()
+              indent = len(line) - len(stripped)
+              if stripped == 'run: |':
+                  in_run_block = True
+                  run_indent = indent
+                  continue
+              if in_run_block and stripped and indent <= run_indent:
+                  in_run_block = False
+              if in_run_block and '${{ inputs.' in line:
+                  unsafe.append(number)
+          if unsafe:
+              raise SystemExit(
+                  'workflow_dispatch inputs must enter shell steps through env, '
+                  f'not direct interpolation; unsafe run lines: {unsafe}'
+              )
+          print('Manual self-hosted real-Xaver workflow security contract passed')
+          PY
