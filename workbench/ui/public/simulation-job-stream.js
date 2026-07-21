@@ -19,6 +19,8 @@
       this.source = null;
       this.jobId = '';
       this.streaming = false;
+      this.opened = false;
+      this.fallbackScheduled = false;
       this.refreshing = false;
       this.originalScheduleRefresh = typeof element.scheduleRefresh === 'function'
         ? element.scheduleRefresh.bind(element)
@@ -85,17 +87,34 @@
         `/api/simulations/${encodeURIComponent(jobId)}/events/stream${cursor}`,
       );
       this.source = source;
-      this.streaming = true;
-      if (this.element.pollTimer) global.clearTimeout(this.element.pollTimer);
-      this.element.pollTimer = null;
+      this.streaming = false;
+      this.opened = false;
+      this.fallbackScheduled = false;
 
+      source.onopen = () => {
+        if (this.source !== source) return;
+        this.opened = true;
+        this.streaming = true;
+        this.fallbackScheduled = false;
+        if (this.element.pollTimer) global.clearTimeout(this.element.pollTimer);
+        this.element.pollTimer = null;
+      };
       source.addEventListener('simulation-event', () => this.refreshDetail());
       source.addEventListener('simulation-complete', () => {
         this.closeSource();
         this.refreshAll();
       });
       source.onerror = () => {
+        if (this.source !== source) return;
         const closedState = this.EventSource.CLOSED ?? 2;
+        if (!this.opened) {
+          if (!this.fallbackScheduled && this.originalScheduleRefresh) {
+            this.fallbackScheduled = true;
+            this.originalScheduleRefresh();
+          }
+          if (source.readyState === closedState) this.closeSource();
+          return;
+        }
         if (source.readyState !== closedState) return;
         this.closeSource();
         if (this.originalScheduleRefresh) this.originalScheduleRefresh();
@@ -107,6 +126,8 @@
       this.source = null;
       this.jobId = '';
       this.streaming = false;
+      this.opened = false;
+      this.fallbackScheduled = false;
     }
 
     async refreshDetail() {
