@@ -16,7 +16,9 @@ class SimulationResultService(_core.SimulationResultService):
         html = super().viewer_html(job_id).decode("utf-8")
         marker = "</body>"
         script = '<script src="/web/result-viewer-tools.js"></script>'
-        if marker not in html or script in html:
+        if script in html:
+            return html.encode("utf-8")
+        if marker not in html:
             raise _core.SimulationResultError(
                 "viewer_unavailable",
                 "The integrated WRF result viewer cannot load its map tools.",
