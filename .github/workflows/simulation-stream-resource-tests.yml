@@ -1,0 +1,95 @@
+name: Simulation Stream and Resource Preflight Tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'workbench/simulation_store.py'
+      - 'workbench/_simulation_store_facade_core.py'
+      - 'workbench/simulation_worker.py'
+      - 'workbench/_simulation_worker_preflight_core.py'
+      - 'workbench/simulation_resources.py'
+      - 'workbench/simulation_event_stream.py'
+      - 'workbench/server/application.py'
+      - 'workbench/web/simulation-job-stream.js'
+      - 'workbench/ui/public/simulation-job-stream.js'
+      - 'workbench/web/index.html'
+      - 'workbench/ui/index.html'
+      - 'ci/sync-workbench-public-assets.py'
+      - 'workbench/server/tests/test_simulation_worker.py'
+      - 'workbench/server/tests/test_simulation_stream_and_preflight.py'
+      - 'workbench/server/tests/test_simulation_event_stream_api.py'
+      - 'workbench/server/tests/test_simulation_job_stream_ui.js'
+      - 'doc/SIMULATION_EVENT_STREAM_RESOURCE_PREFLIGHT.md'
+      - '.github/workflows/simulation-stream-resource-tests.yml'
+  push:
+    branches: [master, develop]
+    paths:
+      - 'workbench/simulation_store.py'
+      - 'workbench/_simulation_store_facade_core.py'
+      - 'workbench/simulation_worker.py'
+      - 'workbench/_simulation_worker_preflight_core.py'
+      - 'workbench/simulation_resources.py'
+      - 'workbench/simulation_event_stream.py'
+      - 'workbench/server/application.py'
+      - 'workbench/web/simulation-job-stream.js'
+      - 'workbench/ui/public/simulation-job-stream.js'
+      - 'workbench/web/index.html'
+      - 'workbench/ui/index.html'
+      - 'ci/sync-workbench-public-assets.py'
+      - 'workbench/server/tests/test_simulation_worker.py'
+      - 'workbench/server/tests/test_simulation_stream_and_preflight.py'
+      - 'workbench/server/tests/test_simulation_event_stream_api.py'
+      - 'workbench/server/tests/test_simulation_job_stream_ui.js'
+      - 'doc/SIMULATION_EVENT_STREAM_RESOURCE_PREFLIGHT.md'
+      - '.github/workflows/simulation-stream-resource-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .
+
+concurrency:
+  group: simulation-stream-resource-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  focused-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify syntax and canonical assets
+        run: |
+          python3 -m py_compile \
+            workbench/_simulation_store_facade_core.py \
+            workbench/simulation_store.py \
+            workbench/_simulation_worker_preflight_core.py \
+            workbench/simulation_worker.py \
+            workbench/simulation_resources.py \
+            workbench/simulation_event_stream.py \
+            workbench/server/application.py \
+            workbench/server/tests/test_simulation_worker.py \
+            workbench/server/tests/test_simulation_stream_and_preflight.py \
+            workbench/server/tests/test_simulation_event_stream_api.py
+          node --check workbench/web/simulation-job-stream.js
+          node --check workbench/server/tests/test_simulation_job_stream_ui.js
+          python3 ci/sync-workbench-public-assets.py --check
+
+      - name: Test event cursor, SSE and resource admission
+        run: python3 workbench/server/tests/test_simulation_stream_and_preflight.py -v
+
+      - name: Test HTTP event replay and reconnect
+        run: python3 workbench/server/tests/test_simulation_event_stream_api.py -v
+
+      - name: Test browser stream controller
+        run: node workbench/server/tests/test_simulation_job_stream_ui.js
+
+      - name: Re-run persistent worker regressions
+        run: |
+          python3 workbench/server/tests/test_simulation_worker.py -v
+          python3 workbench/server/tests/test_simulation_worker_safety.py -v

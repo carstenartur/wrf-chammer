@@ -239,7 +239,22 @@ class SimulationWorkerTests(unittest.TestCase):
             self.assertEqual("SUCCEEDED", result["status"])
             self.assertEqual({"SUCCEEDED"}, {step["status"] for step in result["steps"]})
             self.assertGreaterEqual(len(result["artifacts"]), 15)
-            self.assertEqual(8, len(result["resource_measurements"]))
+            measurements = result["resource_measurements"]
+            self.assertEqual(9, len(measurements))
+            preflight = [
+                measurement
+                for measurement in measurements
+                if measurement["metadata"].get("phase") == "preflight"
+            ]
+            self.assertEqual(1, len(preflight))
+            self.assertEqual(
+                set(STEP_IDS),
+                {
+                    measurement["step_id"]
+                    for measurement in measurements
+                    if measurement["metadata"].get("phase") != "preflight"
+                },
+            )
             self.assertTrue(
                 any(event["type"] == "job_succeeded" for event in result["events"])
             )
