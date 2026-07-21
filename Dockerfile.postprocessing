@@ -1,0 +1,29 @@
+# syntax=docker/dockerfile:1
+# Pinned postprocessing and result-indexing runtime for persistent WRF jobs.
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir \
+        netCDF4 \
+        numpy \
+        xarray
+
+COPY visualization/postprocess/postprocess.py /app/postprocess_core.py
+COPY ci/postprocess-product.py /app/postprocess.py
+COPY ci/_run_postprocessing_step_core.py /usr/local/bin/_run_postprocessing_step_core.py
+COPY ci/run-postprocessing-step.py /usr/local/bin/run-postprocessing-step.py
+
+RUN chmod +x \
+        /app/postprocess.py \
+        /usr/local/bin/run-postprocessing-step.py \
+    && python3 -m py_compile \
+        /app/postprocess_core.py \
+        /app/postprocess.py \
+        /usr/local/bin/_run_postprocessing_step_core.py \
+        /usr/local/bin/run-postprocessing-step.py \
+    && python3 /app/postprocess.py --help >/dev/null \
+    && python3 /usr/local/bin/run-postprocessing-step.py --help >/dev/null
+
+CMD ["python3", "/usr/local/bin/run-postprocessing-step.py", "--help"]

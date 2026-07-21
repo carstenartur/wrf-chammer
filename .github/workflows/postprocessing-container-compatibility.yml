@@ -1,0 +1,68 @@
+name: Postprocessing Product-Path Compatibility Test
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'Dockerfile.postprocessing'
+      - 'visualization/postprocess/postprocess.py'
+      - 'ci/postprocess-product.py'
+      - 'ci/run-postprocessing-step.py'
+      - 'ci/generate-postprocessing-compatibility-wrfout.py'
+      - 'ci/test-postprocessing-container.sh'
+      - '.github/workflows/postprocessing-container-compatibility.yml'
+  push:
+    branches: [master, develop]
+    paths:
+      - 'Dockerfile.postprocessing'
+      - 'visualization/postprocess/postprocess.py'
+      - 'ci/postprocess-product.py'
+      - 'ci/run-postprocessing-step.py'
+      - 'ci/generate-postprocessing-compatibility-wrfout.py'
+      - 'ci/test-postprocessing-container.sh'
+      - '.github/workflows/postprocessing-container-compatibility.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: postprocessing-product-path-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  product-path-compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build pinned postprocessing runtime
+        run: |
+          docker build \
+            -f Dockerfile.postprocessing \
+            -t wrf-postprocessing:latest \
+            .
+
+      - name: Run product input-mode postprocessing and indexing
+        env:
+          POSTPROCESSING_IMAGE: wrf-postprocessing:latest
+          WORKDIR: /tmp/postprocessing-container-compatibility
+        run: sh ci/test-postprocessing-container.sh
+
+      - name: Package diagnostics on failure
+        if: failure()
+        run: |
+          if [ -d /tmp/postprocessing-container-compatibility ]; then
+            tar -czf /tmp/postprocessing-container-compatibility.tar.gz \
+              -C /tmp postprocessing-container-compatibility
+          fi
+
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: postprocessing-product-path-diagnostics
+          path: /tmp/postprocessing-container-compatibility.tar.gz
+          if-no-files-found: ignore
