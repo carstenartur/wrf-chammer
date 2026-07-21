@@ -4,6 +4,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
+      - 'workbench/_simulation_result_service_core.py'
       - 'workbench/simulation_result_service.py'
       - 'workbench/server/application.py'
       - 'workbench/server/_application_event_base.py'
@@ -19,6 +20,7 @@ on:
   push:
     branches: [master, develop]
     paths:
+      - 'workbench/_simulation_result_service_core.py'
       - 'workbench/simulation_result_service.py'
       - 'workbench/server/application.py'
       - 'workbench/server/_application_event_base.py'
@@ -54,6 +56,7 @@ jobs:
       - name: Verify syntax and canonical browser assets
         run: |
           python3 -m py_compile \
+            workbench/_simulation_result_service_core.py \
             workbench/simulation_result_service.py \
             workbench/server/_application_event_base.py \
             workbench/server/application.py \
