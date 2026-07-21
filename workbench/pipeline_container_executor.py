@@ -11,10 +11,15 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from workbench import wps_container_executor, wrf_container_executor
+from workbench import (
+    postprocessing_container_executor,
+    wps_container_executor,
+    wrf_container_executor,
+)
 
 _WPS_STEPS = {"geogrid", "ungrib", "metgrid"}
 _WRF_STEPS = {"real", "wrf"}
+_POSTPROCESSING_STEPS = {"postprocessing", "result-indexing"}
 
 
 def atomic_json(path: Path, payload: dict[str, Any]) -> None:
@@ -50,6 +55,8 @@ def main(argv: list[str] | None = None) -> int:
         return wps_container_executor.main(arguments)
     if route.step in _WRF_STEPS:
         return wrf_container_executor.main(arguments)
+    if route.step in _POSTPROCESSING_STEPS:
+        return postprocessing_container_executor.main(arguments)
     atomic_json(
         route.result,
         {

@@ -1,0 +1,119 @@
+name: Postprocessing Container Executor Tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'Dockerfile.postprocessing'
+      - 'ci/postprocess-product.py'
+      - 'ci/run-postprocessing-step.py'
+      - 'ci/generate-postprocessing-compatibility-wrfout.py'
+      - 'ci/test-postprocessing-container.sh'
+      - 'workbench/_postprocessing_container_executor_core.py'
+      - 'workbench/postprocessing_container_executor.py'
+      - 'workbench/pipeline_container_executor.py'
+      - 'workbench/server/tests/test_postprocess_product_facade.py'
+      - 'workbench/server/tests/test_postprocessing_container_executor.py'
+      - 'workbench/server/tests/test_postprocessing_container_executor_safety.py'
+      - 'workbench/server/tests/test_postprocessing_step_runner.py'
+      - 'doc/REAL_POSTPROCESSING_INDEXING_EXECUTOR.md'
+      - '.github/workflows/postprocessing-container-executor-tests.yml'
+  push:
+    branches: [master, develop]
+    paths:
+      - 'Dockerfile.postprocessing'
+      - 'ci/postprocess-product.py'
+      - 'ci/run-postprocessing-step.py'
+      - 'ci/generate-postprocessing-compatibility-wrfout.py'
+      - 'ci/test-postprocessing-container.sh'
+      - 'workbench/_postprocessing_container_executor_core.py'
+      - 'workbench/postprocessing_container_executor.py'
+      - 'workbench/pipeline_container_executor.py'
+      - 'workbench/server/tests/test_postprocess_product_facade.py'
+      - 'workbench/server/tests/test_postprocessing_container_executor.py'
+      - 'workbench/server/tests/test_postprocessing_container_executor_safety.py'
+      - 'workbench/server/tests/test_postprocessing_step_runner.py'
+      - 'doc/REAL_POSTPROCESSING_INDEXING_EXECUTOR.md'
+      - '.github/workflows/postprocessing-container-executor-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .
+
+concurrency:
+  group: postprocessing-container-executor-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  executor-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify syntax
+        run: |
+          python3 -m py_compile \
+            ci/postprocess-product.py \
+            ci/run-postprocessing-step.py \
+            ci/generate-postprocessing-compatibility-wrfout.py \
+            workbench/_postprocessing_container_executor_core.py \
+            workbench/postprocessing_container_executor.py \
+            workbench/pipeline_container_executor.py \
+            workbench/server/tests/test_postprocess_product_facade.py \
+            workbench/server/tests/test_postprocessing_container_executor.py \
+            workbench/server/tests/test_postprocessing_container_executor_safety.py \
+            workbench/server/tests/test_postprocessing_step_runner.py
+          sh -n ci/test-postprocessing-container.sh
+
+      - name: Test product postprocessor provenance facade
+        shell: bash
+        run: |
+          python3 workbench/server/tests/test_postprocess_product_facade.py -v \
+            > "${RUNNER_TEMP}/postprocessing-product-facade-tests.log" 2>&1 || {
+              cat "${RUNNER_TEMP}/postprocessing-product-facade-tests.log"
+              exit 1
+            }
+          cat "${RUNNER_TEMP}/postprocessing-product-facade-tests.log"
+
+      - name: Test pinned image, sandbox and final-step routing
+        shell: bash
+        run: |
+          python3 workbench/server/tests/test_postprocessing_container_executor.py -v \
+            > "${RUNNER_TEMP}/postprocessing-container-executor-tests.log" 2>&1 || {
+              cat "${RUNNER_TEMP}/postprocessing-container-executor-tests.log"
+              exit 1
+            }
+          cat "${RUNNER_TEMP}/postprocessing-container-executor-tests.log"
+
+      - name: Test specification error semantics
+        shell: bash
+        run: |
+          python3 workbench/server/tests/test_postprocessing_container_executor_safety.py -v \
+            > "${RUNNER_TEMP}/postprocessing-container-safety-tests.log" 2>&1 || {
+              cat "${RUNNER_TEMP}/postprocessing-container-safety-tests.log"
+              exit 1
+            }
+          cat "${RUNNER_TEMP}/postprocessing-container-safety-tests.log"
+
+      - name: Test provenance, checksums and symlink rejection
+        shell: bash
+        run: |
+          python3 workbench/server/tests/test_postprocessing_step_runner.py -v \
+            > "${RUNNER_TEMP}/postprocessing-step-runner-tests.log" 2>&1 || {
+              cat "${RUNNER_TEMP}/postprocessing-step-runner-tests.log"
+              exit 1
+            }
+          cat "${RUNNER_TEMP}/postprocessing-step-runner-tests.log"
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: postprocessing-container-executor-test-logs
+          path: ${{ runner.temp }}/postprocessing-*-tests.log
+          if-no-files-found: error
