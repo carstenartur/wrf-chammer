@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import json
 import mimetypes
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -14,6 +15,7 @@ from typing import Any
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _JOB_ID_RE = re.compile(r"^sim-[0-9a-f]{12}-[0-9a-f]{12}$")
+_RESULT_INDEX_PATH = "results/index.json"
 
 
 class SimulationResultError(RuntimeError):
@@ -29,10 +31,10 @@ class SimulationResultError(RuntimeError):
 class IndexedProduct:
     request_path: str
     relative_path: str
-    absolute_path: Path
     sha256: str
     size_bytes: int
     content_type: str
+    body: bytes
 
 
 class SimulationResultService:
@@ -78,7 +80,7 @@ class SimulationResultService:
                 "result_integrity_error", "The indexed visualization metadata is missing."
             )
         metadata = self._decode_json_bytes(
-            self._read_indexed_product(metadata_product), "Visualization metadata"
+            metadata_product.body, "Visualization metadata"
         )
         metadata_provenance = metadata.get("provenance")
         index_provenance = index["visualization_provenance"]
@@ -93,6 +95,12 @@ class SimulationResultService:
             raise SimulationResultError(
                 "result_integrity_error",
                 "Visualization metadata is not tied to the indexed WRF outputs.",
+            )
+        metadata_job = metadata.get("job_id")
+        if metadata_job is not None and metadata_job != job_id:
+            raise SimulationResultError(
+                "result_integrity_error",
+                "Visualization metadata references another simulation job.",
             )
         ordered_products = [products[key] for key in sorted(products)]
         return {
@@ -118,13 +126,11 @@ class SimulationResultService:
         }
 
     def product(self, job_id: str, request_path: str) -> IndexedProduct:
-        """Return indexed product metadata after verifying its current bytes."""
-
         product, _body = self.read_product(job_id, request_path)
         return product
 
     def read_product(self, job_id: str, request_path: str) -> tuple[IndexedProduct, bytes]:
-        """Read and verify a product once, avoiding check/read time-of-check races."""
+        """Return bytes already read from a fixed-root filesystem allowlist."""
 
         _job, _run_root, _index, products = self._result_context(job_id)
         normalized = self._safe_request_path(request_path)
@@ -133,7 +139,7 @@ class SimulationResultService:
             raise SimulationResultError(
                 "result_not_found", "The requested result product is not indexed."
             )
-        return product, self._read_indexed_product(product)
+        return product, product.body
 
     def _result_context(
         self, job_id: str
@@ -172,16 +178,19 @@ class SimulationResultService:
             or provenance.get("mode") != "wrf"
             or not isinstance(provenance.get("wrfout_files"), list)
             or not provenance["wrfout_files"]
-            or not all(isinstance(value, str) and value for value in provenance["wrfout_files"])
+            or not all(
+                isinstance(value, str) and value for value in provenance["wrfout_files"]
+            )
         ):
             raise SimulationResultError(
                 "result_integrity_error",
                 "Visualization provenance is not tied to WRF output files.",
             )
-        return job, run_root, index, self._indexed_products(run_root, index)
+        available = self._visualization_files(run_root)
+        return job, run_root, index, self._indexed_products(index, available)
 
     def _indexed_products(
-        self, run_root: Path, index: dict[str, Any]
+        self, index: dict[str, Any], available: dict[str, Path]
     ) -> dict[str, IndexedProduct]:
         raw_products = index.get("products")
         if not isinstance(raw_products, list) or not raw_products:
@@ -212,10 +221,10 @@ class SimulationResultService:
                 raise SimulationResultError(
                     "result_integrity_error", "Result product size is invalid."
                 )
-            absolute = (run_root / safe_relative).resolve()
-            if run_root not in absolute.parents or absolute.is_symlink():
+            path = available.get(safe_relative)
+            if path is None:
                 raise SimulationResultError(
-                    "result_integrity_error", "Result product escaped the managed run."
+                    "result_integrity_error", "An indexed result product is missing."
                 )
             request_path = safe_relative.removeprefix("visualizations/")
             if not request_path or request_path in products:
@@ -223,14 +232,20 @@ class SimulationResultService:
                     "result_integrity_error",
                     "Result index contains an invalid or duplicate product.",
                 )
+            body = self._read_verified_file(
+                path,
+                expected_sha256=digest,
+                expected_size=size,
+                label="Indexed result product",
+            )
             products[request_path] = IndexedProduct(
                 request_path=request_path,
                 relative_path=safe_relative,
-                absolute_path=absolute,
                 sha256=digest,
                 size_bytes=size,
                 content_type=mimetypes.guess_type(request_path)[0]
                 or "application/octet-stream",
+                body=body,
             )
         if not products:
             raise SimulationResultError(
@@ -238,6 +253,35 @@ class SimulationResultService:
                 "The result index contains no visualization products.",
             )
         return products
+
+    def _visualization_files(self, run_root: Path) -> dict[str, Path]:
+        visualization_root = run_root / "visualizations"
+        if visualization_root.is_symlink() or not visualization_root.is_dir():
+            raise SimulationResultError(
+                "result_integrity_error", "Visualization directory is missing or unsafe."
+            )
+        available: dict[str, Path] = {}
+        for root_text, directories, filenames in os.walk(
+            visualization_root, topdown=True, followlinks=False
+        ):
+            root = Path(root_text)
+            for directory in list(directories):
+                candidate = root / directory
+                if candidate.is_symlink():
+                    raise SimulationResultError(
+                        "result_integrity_error",
+                        "Visualization directory contains a symbolic link.",
+                    )
+            for filename in filenames:
+                candidate = root / filename
+                if candidate.is_symlink() or not candidate.is_file():
+                    raise SimulationResultError(
+                        "result_integrity_error",
+                        "Visualization directory contains an unsafe product.",
+                    )
+                relative = candidate.relative_to(run_root).as_posix()
+                available[relative] = candidate
+        return available
 
     def _result_index_path(
         self, run_root: Path, job: dict[str, Any]
@@ -255,9 +299,10 @@ class SimulationResultService:
         relative = artifact.get("relative_path")
         digest = artifact.get("sha256")
         size = artifact.get("size_bytes")
-        if not isinstance(relative, str):
+        if relative != _RESULT_INDEX_PATH:
             raise SimulationResultError(
-                "result_integrity_error", "Result index path is invalid."
+                "result_integrity_error",
+                "The result index is not at the canonical managed path.",
             )
         if not isinstance(digest, str) or not _SHA256_RE.fullmatch(digest):
             raise SimulationResultError(
@@ -267,28 +312,39 @@ class SimulationResultService:
             raise SimulationResultError(
                 "result_integrity_error", "Result index size is invalid."
             )
-        path = (run_root / self._safe_relative_path(relative)).resolve()
-        if run_root not in path.parents or path.is_symlink():
+        results_root = run_root / "results"
+        path = results_root / "index.json"
+        if (
+            results_root.is_symlink()
+            or not results_root.is_dir()
+            or path.is_symlink()
+            or not path.is_file()
+        ):
             raise SimulationResultError(
-                "result_integrity_error", "Result index escaped the managed run."
+                "result_integrity_error", "Result index is missing or unsafe."
             )
         return path, artifact
 
     def _run_root(self, job_id: str) -> Path:
-        run_root = (self.runs_root / job_id).resolve()
-        if self.runs_root not in run_root.parents or run_root.is_symlink():
+        if self.runs_root.is_symlink() or not self.runs_root.is_dir():
             raise SimulationResultError(
-                "result_integrity_error", "Simulation run directory is unsafe."
+                "result_integrity_error", "Simulation run storage is unavailable."
             )
-        return run_root
-
-    @classmethod
-    def _read_indexed_product(cls, product: IndexedProduct) -> bytes:
-        return cls._read_verified_file(
-            product.absolute_path,
-            expected_sha256=product.sha256,
-            expected_size=product.size_bytes,
-            label="Indexed result product",
+        for candidate in self.runs_root.iterdir():
+            if candidate.name != job_id:
+                continue
+            if candidate.is_symlink() or not candidate.is_dir():
+                raise SimulationResultError(
+                    "result_integrity_error", "Simulation run directory is unsafe."
+                )
+            resolved = candidate.resolve()
+            if resolved.parent != self.runs_root:
+                raise SimulationResultError(
+                    "result_integrity_error", "Simulation run directory escaped storage."
+                )
+            return resolved
+        raise SimulationResultError(
+            "result_not_found", "Simulation result directory was not found."
         )
 
     @staticmethod
