@@ -1,0 +1,80 @@
+name: Persistent Simulation Worker Tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'workbench/simulation_worker.py'
+      - 'workbench/_simulation_worker_core.py'
+      - 'workbench/simulation_store.py'
+      - 'workbench/_simulation_store_sqlite.py'
+      - 'workbench/server/tests/test_simulation_worker.py'
+      - 'workbench/server/tests/test_simulation_worker_safety.py'
+      - 'doc/PERSISTENT_SIMULATION_WORKER.md'
+      - '.github/workflows/simulation-worker-tests.yml'
+  push:
+    branches: [master, develop]
+    paths:
+      - 'workbench/simulation_worker.py'
+      - 'workbench/_simulation_worker_core.py'
+      - 'workbench/simulation_store.py'
+      - 'workbench/_simulation_store_sqlite.py'
+      - 'workbench/server/tests/test_simulation_worker.py'
+      - 'workbench/server/tests/test_simulation_worker_safety.py'
+      - 'doc/PERSISTENT_SIMULATION_WORKER.md'
+      - '.github/workflows/simulation-worker-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .
+
+concurrency:
+  group: persistent-simulation-worker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  worker-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify Python syntax
+        run: |
+          python3 -m py_compile \
+            workbench/simulation_worker.py \
+            workbench/_simulation_worker_core.py \
+            workbench/server/tests/test_simulation_worker.py \
+            workbench/server/tests/test_simulation_worker_safety.py
+
+      - name: Run worker lifecycle and executor protocol tests
+        shell: bash
+        run: |
+          python3 workbench/server/tests/test_simulation_worker.py -v \
+            > "${RUNNER_TEMP}/simulation-worker-tests.log" 2>&1 || {
+              cat "${RUNNER_TEMP}/simulation-worker-tests.log"
+              exit 1
+            }
+          cat "${RUNNER_TEMP}/simulation-worker-tests.log"
+
+      - name: Run worker interruption and metadata safety tests
+        shell: bash
+        run: |
+          python3 workbench/server/tests/test_simulation_worker_safety.py -v \
+            > "${RUNNER_TEMP}/simulation-worker-safety-tests.log" 2>&1 || {
+              cat "${RUNNER_TEMP}/simulation-worker-safety-tests.log"
+              exit 1
+            }
+          cat "${RUNNER_TEMP}/simulation-worker-safety-tests.log"
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: persistent-simulation-worker-test-logs
+          path: ${{ runner.temp }}/simulation-worker-*.log
+          if-no-files-found: error
