@@ -75,7 +75,7 @@ function createFixtureServer() {
     },
   };
   const layers = {
-    '/jobs/' + JOB_ID + '/results/layers/wind10m.json': {
+    [`/jobs/${JOB_ID}/results/layers/wind10m.json`]: {
       id: 'wind10m',
       label: '10 m wind speed',
       unit: 'm s-1',
@@ -90,7 +90,7 @@ function createFixtureServer() {
         [[5, 6], [7, 8]],
       ],
     },
-    '/jobs/' + JOB_ID + '/results/layers/max_wind10m.json': {
+    [`/jobs/${JOB_ID}/results/layers/max_wind10m.json`]: {
       id: 'max_wind10m',
       label: 'Maximum 10 m wind speed',
       unit: 'm s-1',
@@ -103,11 +103,11 @@ function createFixtureServer() {
       source_times: metadata.times,
       data: [[5, 6], [7, 8]],
     },
-    '/jobs/' + JOB_ID + '/results/layers/xlat.json': [
+    [`/jobs/${JOB_ID}/results/layers/xlat.json`]: [
       [51, 51.1],
       [58.9, 59],
     ],
-    '/jobs/' + JOB_ID + '/results/layers/xlong.json': [
+    [`/jobs/${JOB_ID}/results/layers/xlong.json`]: [
       [2, 14],
       [2.1, 13.9],
     ],
