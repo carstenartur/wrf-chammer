@@ -26,6 +26,14 @@ _SIMULATIONS_PATH = "/api/simulations"
 class WorkbenchApplicationHandler(_BaseWorkbenchApplicationHandler):
     """Extend the established Workbench API with persistent simulation records."""
 
+    def _wizard_preview(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Normalize the UI label to the validated ERA5/WRF product mode."""
+
+        normalized = dict(request)
+        if normalized.get("mode") == "real-data":
+            normalized["mode"] = "era5-wrf"
+        return super()._wizard_preview(normalized)
+
     def _handle_static_path(self, path: str) -> bool:
         if path == "/web/simulation-job-queue.js":
             self._send_static_file(
