@@ -23,16 +23,41 @@ from workbench.simulation_result_service import (
 REPO_ROOT = Path(__file__).resolve().parents[3]
 JOB_ID = "sim-aaaaaaaaaaaa-bbbbbbbbbbbb"
 SPECIFICATION_KEY = "c" * 64
+SOURCE_REVISION = "d" * 40
+ERA5_PLAN_KEY = "e" * 64
 WRF_OUTPUTS = ["wrfout_d01_2013-12-05_12:00:00"]
+RUNTIME = {
+    "wps": {"reference": "wps:test", "identity": "sha256:" + "1" * 64},
+    "wrf": {"reference": "wrf:test", "identity": "sha256:" + "2" * 64},
+    "postprocessing": {
+        "reference": "postprocessing:test",
+        "identity": "sha256:" + "3" * 64,
+    },
+}
 
 
 def sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
+class FakeSpecificationService:
+    def get(self, specification_key: str) -> dict:
+        if specification_key != SPECIFICATION_KEY:
+            raise AssertionError(f"unexpected specification key: {specification_key}")
+        return {
+            "specification_key": SPECIFICATION_KEY,
+            "identity": {
+                "source": {"repository_revision": SOURCE_REVISION},
+                "era5_input": {"plan_key": ERA5_PLAN_KEY},
+                "runtime": copy.deepcopy(RUNTIME),
+            },
+        }
+
+
 class FakeStore:
     def __init__(self, job: dict):
         self.job = job
+        self.specification_service = FakeSpecificationService()
 
     def get_job(self, job_id: str) -> dict:
         if job_id != JOB_ID:
@@ -111,8 +136,9 @@ class IntegratedResultViewerTests(unittest.TestCase):
                 {
                     "version": 1,
                     "specification_key": SPECIFICATION_KEY,
-                    "source_revision": "d" * 40,
-                    "era5_plan_key": "e" * 64,
+                    "source_revision": SOURCE_REVISION,
+                    "era5_plan_key": ERA5_PLAN_KEY,
+                    "runtime": RUNTIME,
                     "artificial_weather_data": False,
                     "visualization_provenance": {
                         "mode": "wrf",
@@ -167,6 +193,12 @@ class IntegratedResultViewerTests(unittest.TestCase):
         self.assertEqual(expected, status, body.decode("utf-8", errors="replace"))
         return headers, body
 
+    def rewrite_index(self, index: dict) -> None:
+        self.index_path.write_text(json.dumps(index), encoding="utf-8")
+        body = self.index_path.read_bytes()
+        self.store.job["artifacts"][0]["sha256"] = sha256_bytes(body)
+        self.store.job["artifacts"][0]["size_bytes"] = len(body)
+
     def test_manifest_viewer_and_indexed_products_are_served(self) -> None:
         _headers, body = self.request(f"/api/simulations/{JOB_ID}/results")
         payload = json.loads(body)
@@ -175,6 +207,8 @@ class IntegratedResultViewerTests(unittest.TestCase):
         self.assertEqual(f"/jobs/{JOB_ID}/results/", results["viewer_url"])
         self.assertFalse(results["artificial_weather_data"])
         self.assertEqual("wrf", results["provenance"]["mode"])
+        self.assertEqual(SOURCE_REVISION, results["source_revision"])
+        self.assertEqual(ERA5_PLAN_KEY, results["era5_plan_key"])
         self.assertEqual(
             ["layers/wind10m.json", "metadata.json"],
             [product["path"] for product in results["products"]],
@@ -228,12 +262,23 @@ class IntegratedResultViewerTests(unittest.TestCase):
     def test_result_index_and_metadata_provenance_are_verified(self) -> None:
         index = json.loads(self.index_path.read_text(encoding="utf-8"))
         index["visualization_provenance"]["mode"] = "fixture"
-        self.index_path.write_text(json.dumps(index), encoding="utf-8")
-        index_body = self.index_path.read_bytes()
-        self.store.job["artifacts"][0]["sha256"] = sha256_bytes(index_body)
-        self.store.job["artifacts"][0]["size_bytes"] = len(index_body)
+        self.rewrite_index(index)
         with self.assertRaisesRegex(SimulationResultError, "WRF output"):
             self.service.manifest(JOB_ID)
+
+    def test_result_index_must_match_immutable_revision_plan_and_runtime(self) -> None:
+        for field, invalid in (
+            ("source_revision", "f" * 40),
+            ("era5_plan_key", "f" * 64),
+            ("runtime", {"wrf": {"identity": "sha256:" + "f" * 64}}),
+        ):
+            with self.subTest(field=field):
+                index = json.loads(self.index_path.read_text(encoding="utf-8"))
+                index[field] = invalid
+                self.rewrite_index(index)
+                with self.assertRaises(SimulationResultError):
+                    self.service.manifest(JOB_ID)
+                self.setUp()
 
 
 if __name__ == "__main__":
