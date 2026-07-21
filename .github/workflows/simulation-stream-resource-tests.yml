@@ -5,7 +5,9 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - 'workbench/simulation_store.py'
+      - 'workbench/_simulation_store_facade_core.py'
       - 'workbench/simulation_worker.py'
+      - 'workbench/_simulation_worker_preflight_core.py'
       - 'workbench/simulation_resources.py'
       - 'workbench/simulation_event_stream.py'
       - 'workbench/server/application.py'
@@ -14,6 +16,7 @@ on:
       - 'workbench/web/index.html'
       - 'workbench/ui/index.html'
       - 'ci/sync-workbench-public-assets.py'
+      - 'workbench/server/tests/test_simulation_worker.py'
       - 'workbench/server/tests/test_simulation_stream_and_preflight.py'
       - 'workbench/server/tests/test_simulation_event_stream_api.py'
       - 'workbench/server/tests/test_simulation_job_stream_ui.js'
@@ -23,7 +26,9 @@ on:
     branches: [master, develop]
     paths:
       - 'workbench/simulation_store.py'
+      - 'workbench/_simulation_store_facade_core.py'
       - 'workbench/simulation_worker.py'
+      - 'workbench/_simulation_worker_preflight_core.py'
       - 'workbench/simulation_resources.py'
       - 'workbench/simulation_event_stream.py'
       - 'workbench/server/application.py'
@@ -32,6 +37,7 @@ on:
       - 'workbench/web/index.html'
       - 'workbench/ui/index.html'
       - 'ci/sync-workbench-public-assets.py'
+      - 'workbench/server/tests/test_simulation_worker.py'
       - 'workbench/server/tests/test_simulation_stream_and_preflight.py'
       - 'workbench/server/tests/test_simulation_event_stream_api.py'
       - 'workbench/server/tests/test_simulation_job_stream_ui.js'
@@ -60,11 +66,14 @@ jobs:
       - name: Verify syntax and canonical assets
         run: |
           python3 -m py_compile \
+            workbench/_simulation_store_facade_core.py \
             workbench/simulation_store.py \
+            workbench/_simulation_worker_preflight_core.py \
             workbench/simulation_worker.py \
             workbench/simulation_resources.py \
             workbench/simulation_event_stream.py \
             workbench/server/application.py \
+            workbench/server/tests/test_simulation_worker.py \
             workbench/server/tests/test_simulation_stream_and_preflight.py \
             workbench/server/tests/test_simulation_event_stream_api.py
           node --check workbench/web/simulation-job-stream.js
