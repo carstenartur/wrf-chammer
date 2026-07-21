@@ -7,6 +7,7 @@ import unittest
 
 from workbench.server.tests.test_integrated_result_viewer import (
     JOB_ID,
+    REPO_ROOT,
     IntegratedResultViewerTests,
 )
 
@@ -18,6 +19,12 @@ class ResultViewerToolsHttpTests(unittest.TestCase):
         )
         fixture.setUp()
         try:
+            target = fixture.root / "workbench" / "web" / "result-viewer-tools.js"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(
+                (REPO_ROOT / "workbench" / "web" / "result-viewer-tools.js").read_bytes()
+            )
+
             headers, body = fixture.request(f"/jobs/{JOB_ID}/results")
             html = body.decode("utf-8")
             self.assertIn(
