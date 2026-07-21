@@ -1,0 +1,97 @@
+name: WPS Container Executor Tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'workbench/_wps_container_executor_core.py'
+      - 'workbench/wps_container_executor.py'
+      - 'workbench/server/tests/test_wps_container_executor.py'
+      - 'workbench/server/tests/test_wps_container_executor_safety.py'
+      - 'workbench/server/tests/test_wps_step_runner_safety.py'
+      - 'ci/run-wps-step.py'
+      - 'ci/test-wps-container-steps.sh'
+      - 'Dockerfile.era5'
+      - 'doc/REAL_WPS_CONTAINER_EXECUTOR.md'
+      - '.github/workflows/wps-container-executor-tests.yml'
+  push:
+    branches: [master, develop]
+    paths:
+      - 'workbench/_wps_container_executor_core.py'
+      - 'workbench/wps_container_executor.py'
+      - 'workbench/server/tests/test_wps_container_executor.py'
+      - 'workbench/server/tests/test_wps_container_executor_safety.py'
+      - 'workbench/server/tests/test_wps_step_runner_safety.py'
+      - 'ci/run-wps-step.py'
+      - 'ci/test-wps-container-steps.sh'
+      - 'Dockerfile.era5'
+      - 'doc/REAL_WPS_CONTAINER_EXECUTOR.md'
+      - '.github/workflows/wps-container-executor-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .
+
+concurrency:
+  group: wps-container-executor-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  command-contract-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify syntax
+        run: |
+          python3 -m py_compile \
+            workbench/_wps_container_executor_core.py \
+            workbench/wps_container_executor.py \
+            workbench/server/tests/test_wps_container_executor.py \
+            workbench/server/tests/test_wps_container_executor_safety.py \
+            workbench/server/tests/test_wps_step_runner_safety.py \
+            ci/run-wps-step.py
+          sh -n ci/test-wps-container-steps.sh
+
+      - name: Test pinned image and sandbox command
+        shell: bash
+        run: |
+          python3 workbench/server/tests/test_wps_container_executor.py -v \
+            > "${RUNNER_TEMP}/wps-container-executor-tests.log" 2>&1 || {
+              cat "${RUNNER_TEMP}/wps-container-executor-tests.log"
+              exit 1
+            }
+          cat "${RUNNER_TEMP}/wps-container-executor-tests.log"
+
+      - name: Test host symlink and stale-result rejection
+        shell: bash
+        run: |
+          python3 workbench/server/tests/test_wps_container_executor_safety.py -v \
+            > "${RUNNER_TEMP}/wps-container-executor-safety-tests.log" 2>&1 || {
+              cat "${RUNNER_TEMP}/wps-container-executor-safety-tests.log"
+              exit 1
+            }
+          cat "${RUNNER_TEMP}/wps-container-executor-safety-tests.log"
+
+      - name: Test runtime symlink and retry determinism
+        shell: bash
+        run: |
+          python3 workbench/server/tests/test_wps_step_runner_safety.py -v \
+            > "${RUNNER_TEMP}/wps-step-runner-safety-tests.log" 2>&1 || {
+              cat "${RUNNER_TEMP}/wps-step-runner-safety-tests.log"
+              exit 1
+            }
+          cat "${RUNNER_TEMP}/wps-step-runner-safety-tests.log"
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wps-container-executor-test-logs
+          path: ${{ runner.temp }}/wps-*-tests.log
+          if-no-files-found: error
