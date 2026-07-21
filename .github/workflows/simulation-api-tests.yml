@@ -1,0 +1,118 @@
+name: Persistent Simulation API Tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'ci/sync-workbench-public-assets.py'
+      - 'workbench/simulation_store.py'
+      - 'workbench/_simulation_store_sqlite.py'
+      - 'workbench/pipeline_specification.py'
+      - 'workbench/pipeline_specification_service.py'
+      - 'workbench/server/application.py'
+      - 'workbench/server/_application_base.py'
+      - 'workbench/server/tests/test_simulation_job_api.py'
+      - 'workbench/server/tests/test_simulation_job_queue_ui.js'
+      - 'workbench/server/tests/test_simulation_store.py'
+      - 'workbench/server/tests/test_simulation_store_validation.py'
+      - 'workbench/server/tests/test_ui_public_asset_build.py'
+      - 'workbench/web/simulation-job-queue.js'
+      - 'workbench/web/index.html'
+      - 'workbench/ui/index.html'
+      - 'workbench/ui/public/simulation-job-queue.js'
+      - 'doc/PERSISTENT_SIMULATION_API_UI.md'
+      - '.github/workflows/simulation-api-tests.yml'
+  push:
+    branches: [master, develop]
+    paths:
+      - 'ci/sync-workbench-public-assets.py'
+      - 'workbench/simulation_store.py'
+      - 'workbench/_simulation_store_sqlite.py'
+      - 'workbench/pipeline_specification.py'
+      - 'workbench/pipeline_specification_service.py'
+      - 'workbench/server/application.py'
+      - 'workbench/server/_application_base.py'
+      - 'workbench/server/tests/test_simulation_job_api.py'
+      - 'workbench/server/tests/test_simulation_job_queue_ui.js'
+      - 'workbench/server/tests/test_simulation_store.py'
+      - 'workbench/server/tests/test_simulation_store_validation.py'
+      - 'workbench/server/tests/test_ui_public_asset_build.py'
+      - 'workbench/web/simulation-job-queue.js'
+      - 'workbench/web/index.html'
+      - 'workbench/ui/index.html'
+      - 'workbench/ui/public/simulation-job-queue.js'
+      - 'doc/PERSISTENT_SIMULATION_API_UI.md'
+      - '.github/workflows/simulation-api-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .
+
+concurrency:
+  group: persistent-simulation-api-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  simulation-api-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify Python and JavaScript syntax
+        run: |
+          python3 -m py_compile \
+            ci/sync-workbench-public-assets.py \
+            workbench/simulation_store.py \
+            workbench/_simulation_store_sqlite.py \
+            workbench/server/_application_base.py \
+            workbench/server/application.py \
+            workbench/server/tests/test_simulation_job_api.py
+          node --check workbench/web/simulation-job-queue.js
+          node --check workbench/server/tests/test_simulation_job_queue_ui.js
+
+      - name: Verify canonical public assets
+        run: |
+          python3 ci/sync-workbench-public-assets.py --check
+          python3 workbench/server/tests/test_ui_public_asset_build.py
+
+      - name: Run simulation store tests
+        shell: bash
+        run: |
+          python3 workbench/server/tests/test_simulation_store.py -v \
+            > "${RUNNER_TEMP}/simulation-store-tests.log" 2>&1 || {
+              cat "${RUNNER_TEMP}/simulation-store-tests.log"
+              exit 1
+            }
+          python3 workbench/server/tests/test_simulation_store_validation.py -v \
+            > "${RUNNER_TEMP}/simulation-validation-tests.log" 2>&1 || {
+              cat "${RUNNER_TEMP}/simulation-validation-tests.log"
+              exit 1
+            }
+          cat "${RUNNER_TEMP}/simulation-store-tests.log"
+          cat "${RUNNER_TEMP}/simulation-validation-tests.log"
+
+      - name: Run persistent simulation API and restart test
+        shell: bash
+        run: |
+          python3 workbench/server/tests/test_simulation_job_api.py \
+            > "${RUNNER_TEMP}/simulation-api-tests.log" 2>&1 || {
+              cat "${RUNNER_TEMP}/simulation-api-tests.log"
+              exit 1
+            }
+          cat "${RUNNER_TEMP}/simulation-api-tests.log"
+
+      - name: Test selected-job detail and event loading
+        run: node workbench/server/tests/test_simulation_job_queue_ui.js
+
+      - name: Upload focused diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: persistent-simulation-api-test-logs
+          path: ${{ runner.temp }}/simulation-*-tests.log
+          if-no-files-found: error

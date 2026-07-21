@@ -11,6 +11,7 @@ ASSETS = (
     "era5-download-control.js",
     "era5-cache-management.js",
     "real-pipeline-specification.js",
+    "simulation-job-queue.js",
 )
 
 

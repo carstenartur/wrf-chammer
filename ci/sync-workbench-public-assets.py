@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Synchronize canonical Workbench custom-element sources into Vite public assets."""
+"""Synchronize canonical Workbench custom elements into Vite public assets."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ ASSETS = (
     "era5-download-control.js",
     "era5-cache-management.js",
     "real-pipeline-specification.js",
+    "simulation-job-queue.js",
 )
 
 
@@ -24,7 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--check",
         action="store_true",
-        help="Fail instead of writing when a Vite public asset differs from its canonical source.",
+        help="Fail instead of writing when a public asset differs from its canonical source.",
     )
     return parser
 
@@ -33,25 +34,21 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     mismatches: list[str] = []
     PUBLIC_ROOT.mkdir(parents=True, exist_ok=True)
-
     for filename in ASSETS:
         source = WEB_ROOT / filename
         target = PUBLIC_ROOT / filename
         if not source.is_file():
             mismatches.append(f"missing canonical browser asset: {source.relative_to(REPO_ROOT)}")
             continue
-        source_content = source.read_text(encoding="utf-8")
-        target_content = target.read_text(encoding="utf-8") if target.is_file() else None
-        if target_content == source_content:
+        content = source.read_text(encoding="utf-8")
+        current = target.read_text(encoding="utf-8") if target.is_file() else None
+        if current == content:
             continue
         if args.check:
-            mismatches.append(
-                f"out-of-sync Vite public asset: {target.relative_to(REPO_ROOT)}"
-            )
+            mismatches.append(f"out-of-sync Vite public asset: {target.relative_to(REPO_ROOT)}")
         else:
-            target.write_text(source_content, encoding="utf-8")
+            target.write_text(content, encoding="utf-8")
             print(f"Updated {target.relative_to(REPO_ROOT)}")
-
     if mismatches:
         for mismatch in mismatches:
             print(mismatch)
