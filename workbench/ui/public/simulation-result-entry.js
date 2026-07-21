@@ -9,8 +9,10 @@
   }
 
   function resultButton(job) {
-    if (!job || job.status !== 'SUCCEEDED') return '';
-    const jobId = String(job.id || '');
+    if (!job || job.status !== 'SUCCEEDED' || typeof job.id !== 'string' || !job.id) {
+      return '';
+    }
+    const jobId = job.id;
     return `<button type="button" data-view-results data-job-id="${jobId.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')}">View results</button>`;
   }
 
