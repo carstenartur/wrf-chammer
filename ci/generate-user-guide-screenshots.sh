@@ -9,7 +9,6 @@ UI_DIR="${REPO_ROOT}/workbench/ui"
 E2E_DIR="${REPO_ROOT}/workbench/e2e"
 BASEMAP_MODE=${WRF_SCREENSHOT_BASEMAP:-openstreetmap}
 SCREENSHOT_OUTPUT=${WRF_SCREENSHOT_OUTPUT_DIR:-doc/user-guide/screenshots}
-SCREENSHOT_DIR="${REPO_ROOT}/${SCREENSHOT_OUTPUT}"
 
 case "${BASEMAP_MODE}" in
     openstreetmap|offline-natural-earth) ;;
@@ -18,6 +17,25 @@ case "${BASEMAP_MODE}" in
         exit 2
         ;;
 esac
+
+SCREENSHOT_DIR=$(
+    python3 - "${REPO_ROOT}" "${SCREENSHOT_OUTPUT}" <<'PY'
+from pathlib import Path
+import sys
+root = Path(sys.argv[1]).resolve()
+value = Path(sys.argv[2])
+if value.is_absolute():
+    raise SystemExit('WRF_SCREENSHOT_OUTPUT_DIR must be relative to the repository root')
+target = (root / value).resolve()
+try:
+    relative = target.relative_to(root)
+except ValueError as exc:
+    raise SystemExit('WRF_SCREENSHOT_OUTPUT_DIR must stay inside the repository root') from exc
+if not relative.parts:
+    raise SystemExit('WRF_SCREENSHOT_OUTPUT_DIR must not be the repository root')
+print(target)
+PY
+)
 
 if [ "${CI:-}" = "true" ] && [ "${BASEMAP_MODE}" = "openstreetmap" ] && [ "${WRF_ALLOW_LIVE_OSM_SCREENSHOTS:-}" != "1" ]; then
     printf '%s\n' 'Live OpenStreetMap screenshot generation is disabled in automated CI by default.' >&2
