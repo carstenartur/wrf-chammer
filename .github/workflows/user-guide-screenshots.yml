@@ -9,6 +9,7 @@ on:
       - 'workbench/server/**'
       - 'workbench/e2e/**'
       - 'ci/generate-user-guide-screenshots.sh'
+      - 'ci/verify-user-guide-map-provenance.py'
       - 'doc/USER_GUIDE.md'
       - 'doc/user-guide/**'
       - '.github/workflows/user-guide-screenshots.yml'
@@ -19,11 +20,11 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 env:
-  # This branch performs one human-requested capture of one fixed viewport.
-  # Before merge, pull-request CI is returned to the offline QA basemap.
+  # Temporary one-off, human-requested capture of one fixed viewport.
+  # This live mode and the write permission are removed before merge.
   WRF_SCREENSHOT_BASEMAP: openstreetmap
   WRF_SCREENSHOT_OUTPUT_DIR: doc/user-guide/screenshots
   WRF_ALLOW_LIVE_OSM_SCREENSHOTS: '1'
@@ -35,9 +36,10 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Checkout
+      - name: Checkout the pull-request branch
         uses: actions/checkout@v4
         with:
+          ref: fix/openstreetmap-user-guide-screenshots
           submodules: recursive
 
       - name: Set up Node.js
@@ -88,7 +90,7 @@ jobs:
             workbench/web/styles.css
           if-no-files-found: warn
 
-      - name: Verify generated screenshots and OSM provenance exist
+      - name: Verify generated screenshots and OSM provenance
         run: |
           for file in \
             xaver-01-search.png \
@@ -105,13 +107,18 @@ jobs:
               exit 1
             fi
           done
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          provenance = json.loads(Path('doc/user-guide/screenshots/xaver-03b-map-domain-wizard.png.provenance.json').read_text())
-          assert provenance['basemap'] == 'openstreetmap-standard', provenance
-          assert provenance['tile_host'] == 'tile.openstreetmap.org', provenance
-          assert provenance['successful_tile_responses'] >= 4, provenance
-          assert 'OpenStreetMap contributors' in provenance['attribution'], provenance
-          print('OpenStreetMap screenshot provenance verified')
-          PY
+          python3 ci/verify-user-guide-map-provenance.py
+
+      - name: Commit this verified capture to the PR branch
+        if: github.event_name == 'pull_request' && github.head_ref == 'fix/openstreetmap-user-guide-screenshots'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add doc/user-guide/screenshots/*.png
+          git add doc/user-guide/screenshots/xaver-03b-map-domain-wizard.png.provenance.json
+          if git diff --cached --quiet; then
+            echo 'Verified screenshots already match the branch.'
+            exit 0
+          fi
+          git commit -m 'Update verified OpenStreetMap user-guide screenshots'
+          git push origin HEAD:fix/openstreetmap-user-guide-screenshots
