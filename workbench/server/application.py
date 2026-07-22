@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import signal
 import threading
+from http import HTTPStatus
 from typing import Any
 
 import workbench.server._application_result_base as _core
@@ -17,6 +18,7 @@ from workbench.era5_credential_service import Era5CredentialValidationService
 from workbench.era5_download_manager import Era5DownloadManager
 from workbench.server._application_result_base import *  # noqa: F401,F403
 from workbench.server.server import WorkbenchApiServer
+from workbench.simulation_store import SimulationStoreError
 
 
 class WorkbenchApplicationHandler(_core.WorkbenchApplicationHandler):
@@ -38,6 +40,12 @@ class WorkbenchApplicationHandler(_core.WorkbenchApplicationHandler):
             )
             self.server.era5_cache_service = service
         return service
+
+    def _send_simulation_error(self, exc: SimulationStoreError) -> None:
+        if exc.code == "input_dataset_unavailable":
+            self._send_error(HTTPStatus.CONFLICT, exc.code, exc.message)
+            return
+        super()._send_simulation_error(exc)
 
 
 _core.WorkbenchApplicationHandler = WorkbenchApplicationHandler
