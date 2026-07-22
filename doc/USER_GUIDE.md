@@ -11,19 +11,46 @@ The guide uses three different visual categories. They must not be confused:
 | Screenshot | Meaning | Contains computed weather? |
 |---|---|---:|
 | `xaver-01` to `xaver-06` | Search, configuration, planning, dry-run status and logs | No |
-| `xaver-03b-map-domain-wizard.png` | Geographic basemap plus the selected WRF domain | No |
+| `xaver-03b-map-domain-wizard.png` | OpenStreetMap basemap plus the selected WRF domain | No |
 | `xaver-07-weather-map.png` | A rendered layer from real WRF output | Yes |
 
-The normal documentation screenshot command generates only the first two
-categories. A green **User Guide Screenshots** workflow therefore proves that the
-UI flow and geographic planning map render correctly; it does **not** prove that
-WRF produced a meteorological field.
+The checked-in planning screenshots were generated from the real interactive UI
+with visible tiles from the canonical OpenStreetMap endpoint. The map-specific
+screenshot has a sidecar provenance record:
 
-For normal interactive use, the planning widget loads OpenStreetMap tiles. The
-deterministic CI screenshot uses the explicit URL option
-`?basemap=natural-earth` and a small local Natural Earth vector subset so that
-country outlines remain visible without contacting an external tile service.
-Both are geographic context only. Neither is weather data.
+```text
+doc/user-guide/screenshots/
+  xaver-03b-map-domain-wizard.png
+  xaver-03b-map-domain-wizard.png.provenance.json
+```
+
+The provenance record binds the PNG SHA-256 to the tile URL template, tile host,
+number of successful visible tile responses and the attribution text that was
+visible when the screenshot was captured. Verify it with:
+
+```bash
+python3 ci/verify-user-guide-map-provenance.py
+```
+
+A green **User Guide Screenshots** workflow proves that the UI flow and planning
+map render correctly. It does **not** prove that WRF produced a meteorological
+field.
+
+Normal pull-request CI does not contact the community OpenStreetMap tile server.
+It intercepts tile requests with a deterministic local Natural Earth QA provider
+and writes those temporary screenshots to:
+
+```text
+workbench-runs/ci-user-guide-screenshots/
+```
+
+That offline QA output never overwrites or masquerades as the checked-in
+OpenStreetMap documentation images. A manually dispatched workflow may select
+`openstreetmap`; its output is uploaded from
+`workbench-runs/manual-openstreetmap-screenshots/` for explicit review.
+
+Both the OpenStreetMap planning map and the offline Natural Earth QA rendering
+are geographic context only. Neither contains weather data.
 
 The computed result image `xaver-07-weather-map.png` is intentionally absent until
 a complete real-data run has produced WRF-proven visualization artifacts and the
@@ -32,10 +59,12 @@ varying and visibly rendered.
 
 ## Generate the regular UI screenshots
 
-From the repository root:
+From the repository root, a human-reviewed OpenStreetMap capture is generated
+with:
 
 ```bash
-sh ci/generate-user-guide-screenshots.sh
+WRF_SCREENSHOT_BASEMAP=openstreetmap \
+  sh ci/generate-user-guide-screenshots.sh
 ```
 
 The command builds the modern UI, starts the real local Workbench server in the
@@ -45,7 +74,15 @@ browser integration environment and writes screenshots to:
 doc/user-guide/screenshots/
 ```
 
-It captures:
+For deterministic offline QA, use a separate output directory:
+
+```bash
+WRF_SCREENSHOT_BASEMAP=offline-natural-earth \
+WRF_SCREENSHOT_OUTPUT_DIR=workbench-runs/local-user-guide-screenshots \
+  sh ci/generate-user-guide-screenshots.sh
+```
+
+The screenshot command captures:
 
 ```text
 xaver-01-search.png
@@ -126,11 +163,14 @@ The server derives:
 - estimated RAM, storage and wall-clock range;
 - a schema-valid preview configuration.
 
-The blue rectangle is the planned model domain. Country outlines, seas and place
-labels are geographic context. No meteorological values are calculated in this
-view.
+The blue rectangle is the planned model domain. OpenStreetMap roads, places,
+boundaries and waters are geographic context. No meteorological values are
+calculated in this view.
 
-![Guided Xaver map-domain plan with geographic context, grid and resource estimates](user-guide/screenshots/xaver-03b-map-domain-wizard.png)
+![Guided Xaver map-domain plan on OpenStreetMap with grid and resource estimates](user-guide/screenshots/xaver-03b-map-domain-wizard.png)
+
+Basemap © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright).
+The capture provenance is stored beside the PNG and verified in CI.
 
 Expert controls may override grid spacing, vertical levels and output interval.
 All overrides are validated by the server. See
@@ -217,147 +257,3 @@ structured events. A cancelled or failed job can reuse already verified cache
 files.
 
 After successful verification, the plan directory contains:
-
-```text
-checksums.json
-provenance.json
-files/...
-downloads/<download-id>/era5-manifest.json
-```
-
-A complete cache can be verified without credentials. Missing files require a
-local `CDSAPI_KEY` or `.cdsapirc`; secret values never belong in browser responses,
-job JSON or command arguments.
-
-See [`ERA5_DATA_UI.md`](ERA5_DATA_UI.md) and
-[`ERA5_DATA_PLANNING.md`](ERA5_DATA_PLANNING.md).
-
-## 6. Inspect the managed ERA5 cache
-
-The global cache view lists each plan with:
-
-- stored bytes and regular-file count;
-- request coverage and partial entries;
-- period and geographic bounds;
-- source, datasets and checksum/provenance availability;
-- creation, modification and last-use timestamps;
-- dependent download jobs and active-state protection.
-
-The browser reads:
-
-```http
-GET /api/data/era5/cache
-GET /api/data/era5/cache/{plan-key}
-```
-
-Deletion is rejected while a dependent download is active. A confirmed deletion
-includes the exact plan key and dependency snapshot:
-
-```http
-POST /api/data/era5/cache/{plan-key}/delete
-Content-Type: application/json
-
-{
-  "confirm_plan_key": "<same plan key>",
-  "dependent_job_ids": ["<exact IDs from the detail response>"]
-}
-```
-
-See [`ERA5_CACHE_MANAGEMENT.md`](ERA5_CACHE_MANAGEMENT.md).
-
-## 7. Preview and run the dry-run workflow
-
-The curated workflow previews a generated job through:
-
-```http
-POST /api/jobs/preview
-```
-
-![Xaver generated config](user-guide/screenshots/xaver-04-preview-config.png)
-
-Select **Start dry-run** or **Start planned dry-run**. A dry-run validates and
-records intended workflow steps but does not download data or execute WPS/WRF.
-
-![Xaver dry-run status](user-guide/screenshots/xaver-05-dry-run-status.png)
-
-Logs are read through:
-
-```http
-GET /api/jobs/{id}/logs
-```
-
-![Xaver dry-run logs](user-guide/screenshots/xaver-06-logs.png)
-
-These screenshots are intentionally not weather maps.
-
-## 8. Persistent simulation records
-
-A real immutable pipeline specification can be used to create a persistent
-simulation record. Creation and execution intent remain separate:
-
-```text
-READY → QUEUED → RUNNING → SUCCEEDED | FAILED | CANCELLED
-```
-
-The queue/history view can show frozen inputs, runtime identities, ordered steps,
-events, artifacts and resource measurements. Queue state alone never implies that
-WRF has executed.
-
-## 9. Generate a computed weather-map screenshot
-
-This step is separate from regular screenshot CI. It requires an existing real
-visualization directory with:
-
-```text
-metadata.json
-layers/
-```
-
-Run:
-
-```bash
-sh ci/generate-real-data-weather-map-screenshot.sh \
-  workbench-runs/xaver-real/visualizations \
-  max_wind10m
-```
-
-The command refuses to create documentation output unless:
-
-- `metadata.json` declares `provenance.mode = "wrf"`;
-- at least one originating `wrfout` file is recorded;
-- the requested layer is a safe regular file;
-- the layer contains a spatially varying numeric field;
-- the browser canvas contains a sufficiently large, opaque and non-uniform render.
-
-Only then is this file created:
-
-```text
-doc/user-guide/screenshots/xaver-07-weather-map.png
-```
-
-Commit it only after reviewing that it shows plausible meteorological structure.
-A real-data screenshot is not a full scientific validation of the simulation.
-
-At the time a checkout lacks `xaver-07-weather-map.png`, the honest interpretation
-is: **no reviewed real WRF result image has been committed yet**. The other
-screenshots remain useful documentation, but they do not substitute for that
-result.
-
-## 10. Updating screenshots
-
-For a normal UI change:
-
-1. Run `sh ci/generate-user-guide-screenshots.sh`.
-2. Review every generated PNG, especially visible map geography.
-3. Commit intentional screenshot changes with the UI and guide changes.
-
-For a computed weather-result change:
-
-1. Complete the real-data pipeline.
-2. Verify checksums and WRF provenance.
-3. Run the separate real-data screenshot command.
-4. Review the rendered field for nonblank, nonregular meteorological structure.
-5. Commit `xaver-07-weather-map.png` with its provenance and run documentation.
-
-CI uploads regular screenshots as review artifacts. It does not modify pull
-request branches and it does not manufacture a real weather result.
