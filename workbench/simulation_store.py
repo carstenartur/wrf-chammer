@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -19,6 +20,12 @@ _ACTIVE_JOB_STATUSES = (
     "POSTPROCESSING",
     "CANCELLING",
 )
+_CACHE_BLOCKING_JOB_STATUSES = {
+    "READY",
+    "QUEUED",
+    *_ACTIVE_JOB_STATUSES,
+}
+_PLAN_KEY_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 def _utc_now() -> str:
@@ -27,6 +34,44 @@ def _utc_now() -> str:
 
 class SimulationStore(_FacadeCoreSimulationStore):
     """Validated store with atomic admission and exact appended-event results."""
+
+    def dependencies_for_plan(self, plan_key: str) -> list[dict[str, Any]]:
+        """Return path-free simulation records that reference one ERA5 plan."""
+
+        if not isinstance(plan_key, str) or not _PLAN_KEY_RE.fullmatch(plan_key):
+            raise SimulationStoreError(
+                "invalid_plan_key", "ERA5 plan key must be a 64-character SHA-256 value."
+            )
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT DISTINCT
+                    job.id, job.specification_key, job.retry_of, job.status,
+                    job.created_at, job.queued_at, job.started_at,
+                    job.finished_at, job.current_step_id
+                FROM simulation_job AS job
+                INNER JOIN input_dataset AS input ON input.job_id = job.id
+                WHERE input.plan_key = ?
+                ORDER BY job.created_at DESC, job.id DESC
+                """,
+                (plan_key,),
+            ).fetchall()
+        return [
+            {
+                "id": row["id"],
+                "specification_key": row["specification_key"],
+                "retry_of": row["retry_of"],
+                "status": row["status"],
+                "created_at": row["created_at"],
+                "queued_at": row["queued_at"],
+                "started_at": row["started_at"],
+                "finished_at": row["finished_at"],
+                "current_step_id": row["current_step_id"],
+                "blocking": row["status"] in _CACHE_BLOCKING_JOB_STATUSES,
+                "retryable": row["status"] in {"FAILED", "CANCELLED"},
+            }
+            for row in rows
+        ]
 
     def claim_job(
         self,
