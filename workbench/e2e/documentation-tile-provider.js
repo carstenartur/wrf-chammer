@@ -158,7 +158,7 @@ function renderDocumentationTile(url) {
 
 async function installDocumentationTileProvider(page) {
   const stats = { requests: 0, paths: 0, labels: 0 };
-  await page.route('https://*.tile.openstreetmap.org/**', async (route) => {
+  await page.route('https://tile.openstreetmap.org/**', async (route) => {
     const rendered = renderDocumentationTile(route.request().url());
     if (!rendered) {
       await route.abort();
