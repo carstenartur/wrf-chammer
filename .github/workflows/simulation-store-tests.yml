@@ -6,8 +6,11 @@ on:
     paths:
       - 'workbench/simulation_store.py'
       - 'workbench/_simulation_store_sqlite.py'
+      - 'workbench/_simulation_store_dependency_core.py'
+      - 'workbench/era5_dependency_lock.py'
       - 'workbench/server/tests/test_simulation_store.py'
       - 'workbench/server/tests/test_simulation_store_validation.py'
+      - 'workbench/server/tests/test_era5_cache_simulation_dependencies.py'
       - 'doc/PERSISTENT_SIMULATION_JOBS.md'
       - '.github/workflows/simulation-store-tests.yml'
   push:
@@ -15,8 +18,11 @@ on:
     paths:
       - 'workbench/simulation_store.py'
       - 'workbench/_simulation_store_sqlite.py'
+      - 'workbench/_simulation_store_dependency_core.py'
+      - 'workbench/era5_dependency_lock.py'
       - 'workbench/server/tests/test_simulation_store.py'
       - 'workbench/server/tests/test_simulation_store_validation.py'
+      - 'workbench/server/tests/test_era5_cache_simulation_dependencies.py'
       - 'doc/PERSISTENT_SIMULATION_JOBS.md'
       - '.github/workflows/simulation-store-tests.yml'
   workflow_dispatch:
@@ -44,7 +50,10 @@ jobs:
           python3 -m py_compile \
             workbench/simulation_store.py \
             workbench/_simulation_store_sqlite.py \
-            workbench/server/tests/test_simulation_store_validation.py
+            workbench/_simulation_store_dependency_core.py \
+            workbench/era5_dependency_lock.py \
+            workbench/server/tests/test_simulation_store_validation.py \
+            workbench/server/tests/test_era5_cache_simulation_dependencies.py
 
       - name: Run SQLite state-machine tests
         shell: bash
@@ -65,6 +74,16 @@ jobs:
               exit 1
             }
           cat "${RUNNER_TEMP}/simulation-store-validation-tests.log"
+
+      - name: Run ERA5 plan dependency tests
+        shell: bash
+        run: |
+          python3 workbench/server/tests/test_era5_cache_simulation_dependencies.py -v \
+            > "${RUNNER_TEMP}/simulation-store-era5-dependency-tests.log" 2>&1 || {
+              cat "${RUNNER_TEMP}/simulation-store-era5-dependency-tests.log"
+              exit 1
+            }
+          cat "${RUNNER_TEMP}/simulation-store-era5-dependency-tests.log"
 
       - name: Upload diagnostics
         if: always()

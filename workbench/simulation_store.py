@@ -1,193 +1,121 @@
 #!/usr/bin/env python3
-"""Public simulation-store facade with atomic preflight event ordering."""
+"""Public simulation store with ERA5 dependency coordination."""
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import re
+from pathlib import PurePosixPath
 from typing import Any
 
-from workbench._simulation_store_facade_core import (
-    SCHEMA_VERSION,
-    SimulationStore as _FacadeCoreSimulationStore,
-    SimulationStoreError,
-)
+import workbench._simulation_store_dependency_core as _core
+from workbench._simulation_store_dependency_core import *  # noqa: F401,F403
+from workbench.era5_dependency_lock import ERA5_DEPENDENCY_LOCK
 
-_ACTIVE_JOB_STATUSES = (
-    "PREPROCESSING",
-    "INITIALIZING",
-    "SIMULATING",
-    "POSTPROCESSING",
-    "CANCELLING",
-)
+_PLAN_KEY_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
-def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+class SimulationStore(_core.SimulationStore):
+    """Coordinate simulation creation with dependency-aware cache deletion."""
 
-
-class SimulationStore(_FacadeCoreSimulationStore):
-    """Validated store with atomic admission and exact appended-event results."""
-
-    def claim_job(
-        self,
-        job_id: str,
-        worker_id: str,
-        *,
-        max_active_jobs: int = 1,
-        preflight: dict[str, Any] | None = None,
-    ) -> dict[str, Any] | None:
-        self._validate_job_id(job_id)
-        if not isinstance(worker_id, str) or not worker_id.strip():
-            raise SimulationStoreError("invalid_worker_id", "Worker ID must be non-empty.")
+    def _require_input_dataset_available(self, specification: dict[str, Any]) -> None:
+        identity = specification.get("identity")
+        era5_input = identity.get("era5_input") if isinstance(identity, dict) else None
+        plan_key = era5_input.get("plan_key") if isinstance(era5_input, dict) else None
+        files = era5_input.get("files") if isinstance(era5_input, dict) else None
+        data_service = getattr(self.specification_service, "data_service", None)
+        plan_directory_getter = getattr(data_service, "plan_directory", None)
+        # The production PipelineSpecificationService always exposes its
+        # Era5DataService. Isolated persistence adapters used by unit tests may
+        # intentionally provide only immutable specification objects; their
+        # executor tests retain the independent input-byte verification.
+        if not callable(plan_directory_getter):
+            return
         if (
-            isinstance(max_active_jobs, bool)
-            or not isinstance(max_active_jobs, int)
-            or max_active_jobs < 1
+            not isinstance(plan_key, str)
+            or not _PLAN_KEY_RE.fullmatch(plan_key)
+            or not isinstance(files, list)
+            or not files
         ):
             raise SimulationStoreError(
-                "invalid_concurrency_limit",
-                "Maximum active simulations must be a positive integer.",
+                "input_dataset_unavailable",
+                "The immutable specification does not reference an available ERA5 input dataset.",
             )
-        if preflight is not None and not isinstance(preflight, dict):
+        raw_directory = plan_directory_getter(plan_key)
+        try:
+            if raw_directory.is_symlink() or not raw_directory.is_dir():
+                raise OSError("ERA5 plan directory is unavailable")
+            plan_directory = raw_directory.resolve(strict=True)
+        except OSError as exc:
             raise SimulationStoreError(
-                "invalid_measurement", "Resource preflight must be an object."
-            )
-
-        now = _utc_now()
-        with self._transaction() as connection:
-            placeholders = ",".join("?" for _ in _ACTIVE_JOB_STATUSES)
-            active = connection.execute(
-                f"SELECT COUNT(*) AS count FROM simulation_job WHERE status IN ({placeholders})",
-                _ACTIVE_JOB_STATUSES,
-            ).fetchone()
-            if int(active["count"]) >= max_active_jobs:
-                return None
-
-            row = connection.execute(
-                "SELECT * FROM simulation_job WHERE id = ? AND status = 'QUEUED'",
-                (job_id,),
-            ).fetchone()
-            if row is None:
-                return None
-            step = connection.execute(
-                """
-                SELECT * FROM job_step
-                WHERE job_id = ? AND status = 'PENDING'
-                ORDER BY position ASC LIMIT 1
-                """,
-                (job_id,),
-            ).fetchone()
-            if step is None:
+                "input_dataset_unavailable",
+                "The verified ERA5 cache entry is no longer available.",
+            ) from exc
+        for sidecar in ("checksums.json", "provenance.json"):
+            path = plan_directory / sidecar
+            try:
+                unavailable = path.is_symlink() or not path.is_file()
+            except OSError:
+                unavailable = True
+            if unavailable:
                 raise SimulationStoreError(
-                    "job_state_invalid", "Queued simulation has no pending step."
+                    "input_dataset_unavailable",
+                    "The verified ERA5 cache metadata is incomplete.",
+                )
+        for entry in files:
+            if not isinstance(entry, dict):
+                raise SimulationStoreError(
+                    "input_dataset_unavailable",
+                    "The immutable ERA5 input file list is invalid.",
+                )
+            value = entry.get("path")
+            if not isinstance(value, str) or "\\" in value or "\x00" in value:
+                raise SimulationStoreError(
+                    "input_dataset_unavailable",
+                    "The immutable ERA5 input file path is invalid.",
+                )
+            relative = PurePosixPath(value)
+            if relative.is_absolute() or any(part in {"", ".", ".."} for part in value.split("/")):
+                raise SimulationStoreError(
+                    "input_dataset_unavailable",
+                    "The immutable ERA5 input file path is invalid.",
+                )
+            expected_size = entry.get("size_bytes")
+            try:
+                target = (plan_directory / relative.as_posix()).resolve(strict=True)
+                unavailable = (
+                    plan_directory not in target.parents
+                    or target.is_symlink()
+                    or not target.is_file()
+                )
+                if (
+                    not unavailable
+                    and isinstance(expected_size, int)
+                    and not isinstance(expected_size, bool)
+                ):
+                    unavailable = target.stat().st_size != expected_size
+            except OSError:
+                unavailable = True
+            if unavailable:
+                raise SimulationStoreError(
+                    "input_dataset_unavailable",
+                    "One or more verified ERA5 input files are no longer available.",
                 )
 
-            stage = self._stage_for_step(step["step_id"])
-            connection.execute(
-                """
-                UPDATE simulation_job
-                SET status = ?, started_at = ?, worker_id = ?, current_step_id = ?
-                WHERE id = ? AND status = 'QUEUED'
-                """,
-                (stage, now, worker_id.strip(), step["step_id"], job_id),
-            )
-            connection.execute(
-                """
-                UPDATE job_step
-                SET status = 'RUNNING', attempt = attempt + 1,
-                    started_at = ?, finished_at = NULL,
-                    error_code = NULL, error_message = NULL
-                WHERE job_id = ? AND step_id = ?
-                """,
-                (now, job_id, step["step_id"]),
-            )
-            if preflight is not None:
-                self._append_event(
-                    connection,
-                    job_id,
-                    event_type="resource_preflight_passed",
-                    status=stage,
-                    step_id=step["step_id"],
-                    message=(
-                        "Resource preflight passed; the simulation worker claimed "
-                        "the queued job."
-                    ),
-                    details={
-                        "worker_id": worker_id.strip(),
-                        "assessment": preflight,
-                    },
-                )
-            self._append_event(
-                connection,
-                job_id,
-                event_type="step_started",
-                status=stage,
-                step_id=step["step_id"],
-                message=f"Started step {step['label']}.",
-                details={"worker_id": worker_id.strip()},
-            )
-        return self.get_job(job_id)
-
-    def record_event(
-        self,
-        job_id: str,
-        *,
-        event_type: str,
-        status: str,
-        message: str,
-        step_id: str | None = None,
-        details: dict[str, Any] | None = None,
+    def create_job(
+        self, specification_key: str, *, retry_of: str | None = None
     ) -> dict[str, Any]:
-        """Append and return exactly the newly persisted event."""
-
-        self._validate_job_id(job_id)
-        for value, label in (
-            (event_type, "Event type"),
-            (status, "Event status"),
-            (message, "Event message"),
-        ):
-            if not isinstance(value, str) or not value.strip():
+        with ERA5_DEPENDENCY_LOCK:
+            try:
+                specification = self.specification_service.get(specification_key)
+            except Exception as exc:
                 raise SimulationStoreError(
-                    "invalid_event", f"{label} must be non-empty."
-                )
-        if details is not None and not isinstance(details, dict):
-            raise SimulationStoreError(
-                "invalid_event", "Event details must be an object."
-            )
-
-        with self._transaction() as connection:
-            self._job_row(connection, job_id)
-            if step_id is not None:
-                self._step_row(connection, job_id, step_id)
-            self._append_event(
-                connection,
-                job_id,
-                event_type=event_type.strip(),
-                status=status.strip(),
-                step_id=step_id,
-                message=message.strip(),
-                details=details or {},
-            )
-            row = connection.execute(
-                """
-                SELECT sequence, timestamp, event_type, status, step_id,
-                       message, details_json
-                FROM job_event
-                WHERE job_id = ?
-                ORDER BY sequence DESC
-                LIMIT 1
-                """,
-                (job_id,),
-            ).fetchone()
-        return {
-            "sequence": int(row["sequence"]),
-            "timestamp": row["timestamp"],
-            "type": row["event_type"],
-            "status": row["status"],
-            "step_id": row["step_id"],
-            "message": row["message"],
-            "details": self._decode_event_details(row["details_json"]),
-        }
+                    "specification_not_found",
+                    "Immutable pipeline specification not found.",
+                ) from exc
+            self._require_input_dataset_available(specification)
+            return super().create_job(specification_key, retry_of=retry_of)
 
 
-__all__ = ["SCHEMA_VERSION", "SimulationStore", "SimulationStoreError"]
+__all__ = list(getattr(_core, "__all__", ()))
+if "SimulationStore" not in __all__:
+    __all__.append("SimulationStore")

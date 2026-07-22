@@ -32,6 +32,14 @@ function cacheFormatPeriod(period) {
   return `${period.start} → ${period.end}`;
 }
 
+function cacheDependencySummary(jobs, emptyMessage) {
+  if (!jobs.length) return emptyMessage;
+  return jobs.map((job) => {
+    const marker = job.blocking ? ' — blocks deletion' : '';
+    return `${job.id}: ${job.status}${marker}`;
+  }).join(', ');
+}
+
 class Era5CacheManagement extends HTMLElement {
   constructor() {
     super();
@@ -66,10 +74,12 @@ class Era5CacheManagement extends HTMLElement {
   async deleteEntry(planKey) {
     const entry = this.entries.find((candidate) => candidate.plan_key === planKey);
     if (!entry || !entry.deletion?.allowed) return;
-    const dependentJobs = entry.deletion.confirmation?.dependent_job_ids || [];
+    const dependentDownloads = entry.deletion.confirmation?.dependent_job_ids || [];
+    const dependentSimulations = entry.deletion.confirmation?.dependent_simulation_ids || [];
     const warning = [
       `Delete ERA5 cache entry ${planKey}?`,
-      `This releases ${cacheFormatBytes(entry.storage?.size_bytes)} and permanently removes its prepared requests, verified files, manifests and ${dependentJobs.length} download-job record(s).`,
+      `This releases ${cacheFormatBytes(entry.storage?.size_bytes)} and permanently removes prepared requests, verified files and manifests.`,
+      `${dependentDownloads.length} ERA5 download-job record(s) and ${dependentSimulations.length} persistent simulation record(s) reference this plan. Completed records remain in history, but their input files can no longer be reused or independently reverified from this cache.`,
       'This operation cannot be undone.',
     ].join('\n\n');
     if (!window.confirm(warning)) return;
@@ -84,7 +94,8 @@ class Era5CacheManagement extends HTMLElement {
           method: 'POST',
           body: JSON.stringify({
             confirm_plan_key: planKey,
-            dependent_job_ids: dependentJobs,
+            dependent_job_ids: dependentDownloads,
+            dependent_simulation_ids: dependentSimulations,
           }),
         },
       );
@@ -111,10 +122,16 @@ class Era5CacheManagement extends HTMLElement {
 
   renderEntry(entry) {
     const deletion = entry.deletion || {};
-    const jobs = entry.dependencies?.download_jobs || [];
-    const jobSummary = jobs.length
-      ? jobs.map((job) => `${job.id}: ${job.status}`).join(', ')
-      : 'No persistent download jobs depend on this entry.';
+    const downloads = entry.dependencies?.download_jobs || [];
+    const simulations = entry.dependencies?.simulation_jobs || [];
+    const downloadSummary = cacheDependencySummary(
+      downloads,
+      'No persistent download jobs depend on this entry.',
+    );
+    const simulationSummary = cacheDependencySummary(
+      simulations,
+      'No persistent simulations depend on this entry.',
+    );
     return `
       <article class="entry ${entry.status === 'invalid' ? 'invalid' : ''}">
         <div class="entry-heading">
@@ -133,13 +150,15 @@ class Era5CacheManagement extends HTMLElement {
           <div><span>Stored data</span><strong>${cacheFormatBytes(entry.storage?.size_bytes)}</strong><small>${Number(entry.storage?.file_count || 0)} files</small></div>
           <div><span>Coverage</span><strong>${Number(entry.coverage?.percent || 0)}%</strong><small>${Number(entry.coverage?.hits || 0)} / ${Number(entry.coverage?.total || 0)} requests</small></div>
           <div><span>Last used</span><strong>${cacheEscape(entry.last_used_at || 'unknown')}</strong><small>${entry.age_days == null ? 'age unknown' : `${entry.age_days} days ago`}</small></div>
-          <div><span>Dependent jobs</span><strong>${Number(entry.dependencies?.download_job_count || 0)}</strong><small>${Number(entry.dependencies?.active_download_job_count || 0)} active</small></div>
+          <div><span>Download jobs</span><strong>${Number(entry.dependencies?.download_job_count || 0)}</strong><small>${Number(entry.dependencies?.active_download_job_count || 0)} active</small></div>
+          <div><span>Simulations</span><strong>${Number(entry.dependencies?.simulation_job_count || 0)}</strong><small>${Number(entry.dependencies?.blocking_simulation_job_count || 0)} blocking</small></div>
         </div>
         <dl>
           <dt>Period</dt><dd>${cacheEscape(cacheFormatPeriod(entry.period))}</dd>
           <dt>Source</dt><dd>${cacheEscape(entry.provenance?.source || 'unavailable')}</dd>
           <dt>Checksums</dt><dd>${entry.provenance?.checksums_available ? 'available' : 'not yet available'}</dd>
-          <dt>Affected jobs</dt><dd>${cacheEscape(jobSummary)}</dd>
+          <dt>Download dependencies</dt><dd>${cacheEscape(downloadSummary)}</dd>
+          <dt>Simulation dependencies</dt><dd>${cacheEscape(simulationSummary)}</dd>
         </dl>
         ${deletion.blocked_reason ? `<p class="blocked">Deletion blocked: ${cacheEscape(deletion.blocked_reason)}</p>` : ''}
       </article>
@@ -182,7 +201,7 @@ class Era5CacheManagement extends HTMLElement {
           <div>
             <p class="eyebrow">Data administration</p>
             <h2 id="era5-cache-title">Managed ERA5 cache</h2>
-            <p>Inspect global storage, age, provenance and dependent download jobs. Deletion requires a fresh dependency snapshot and is blocked while a worker is active.</p>
+            <p>Inspect global storage, age, provenance, download jobs and persistent simulations. Deletion requires fresh dependency snapshots and is blocked while a download or simulation still needs the files.</p>
           </div>
           <button id="era5-cache-refresh" type="button">Refresh cache</button>
         </header>
