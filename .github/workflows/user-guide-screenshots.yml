@@ -21,6 +21,13 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # This branch performs one human-requested capture of one fixed viewport.
+  # Before merge, pull-request CI is returned to the offline QA basemap.
+  WRF_SCREENSHOT_BASEMAP: openstreetmap
+  WRF_SCREENSHOT_OUTPUT_DIR: doc/user-guide/screenshots
+  WRF_ALLOW_LIVE_OSM_SCREENSHOTS: '1'
+
 jobs:
   xaver-user-guide-screenshots:
     name: Generate Xaver user-guide screenshots
@@ -62,11 +69,13 @@ jobs:
           path: ${{ runner.temp }}/user-guide-screenshots.log
           if-no-files-found: warn
 
-      - name: Upload screenshots
+      - name: Upload screenshots and basemap provenance
         uses: actions/upload-artifact@v4
         with:
           name: xaver-user-guide-screenshots
-          path: doc/user-guide/screenshots/*.png
+          path: |
+            doc/user-guide/screenshots/*.png
+            doc/user-guide/screenshots/*.provenance.json
           if-no-files-found: error
 
       - name: Upload generated UI assets
@@ -79,7 +88,7 @@ jobs:
             workbench/web/styles.css
           if-no-files-found: warn
 
-      - name: Verify checked-in screenshots exist
+      - name: Verify generated screenshots and OSM provenance exist
         run: |
           for file in \
             xaver-01-search.png \
@@ -96,3 +105,13 @@ jobs:
               exit 1
             fi
           done
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          provenance = json.loads(Path('doc/user-guide/screenshots/xaver-03b-map-domain-wizard.png.provenance.json').read_text())
+          assert provenance['basemap'] == 'openstreetmap-standard', provenance
+          assert provenance['tile_host'] == 'tile.openstreetmap.org', provenance
+          assert provenance['successful_tile_responses'] >= 4, provenance
+          assert 'OpenStreetMap contributors' in provenance['attribution'], provenance
+          print('OpenStreetMap screenshot provenance verified')
+          PY
