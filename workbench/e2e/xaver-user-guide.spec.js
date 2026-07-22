@@ -2,16 +2,26 @@ const fs = require('fs');
 const path = require('path');
 const { test, expect } = require('@playwright/test');
 const { installDocumentationTileProvider } = require('./documentation-tile-provider');
+const { resolveScreenshotDirectory } = require('./screenshot-output');
 
 const repoRoot = path.resolve(__dirname, '../..');
-const configuredOutput = process.env.WRF_SCREENSHOT_OUTPUT_DIR;
-const screenshotDir = configuredOutput
-  ? path.resolve(repoRoot, configuredOutput)
-  : path.join(repoRoot, 'doc', 'user-guide', 'screenshots');
+const screenshotDir = resolveScreenshotDirectory(
+  repoRoot,
+  process.env.WRF_SCREENSHOT_OUTPUT_DIR,
+);
 const basemapMode = process.env.WRF_SCREENSHOT_BASEMAP || 'openstreetmap';
 const OPENSTREETMAP_HOST = 'tile.openstreetmap.org';
 const OPENSTREETMAP_TEMPLATE = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-const OPENSTREETMAP_ATTRIBUTION = '© OpenStreetMap contributors';
+
+if (
+  process.env.CI === 'true'
+  && basemapMode === 'openstreetmap'
+  && process.env.WRF_ALLOW_LIVE_OSM_SCREENSHOTS !== '1'
+) {
+  throw new Error(
+    'Live OpenStreetMap screenshots in CI require WRF_ALLOW_LIVE_OSM_SCREENSHOTS=1.',
+  );
+}
 
 async function capture(page, fileName) {
   fs.mkdirSync(screenshotDir, { recursive: true });
@@ -79,7 +89,7 @@ async function gotoDocumentationWorkbench(page) {
       }
       liveTileStats.requests += 1;
       liveTileStats.hosts.add(parsed.hostname);
-      if (response.ok()) liveTileStats.successful += 1;
+      if (response.ok() || response.status() === 304) liveTileStats.successful += 1;
     });
   }
 
@@ -124,6 +134,8 @@ async function gotoDocumentationWorkbench(page) {
   }
   const attribution = page.locator('.simulation-map-attribution').first();
   await expect(attribution).toContainText('OpenStreetMap');
+  const visibleAttribution = ((await attribution.textContent()) || '').trim();
+  expect(visibleAttribution).toContain('OpenStreetMap contributors');
   await map.evaluate((element) => {
     element.dataset.basemapReady = 'openstreetmap';
     element.setAttribute(
@@ -137,7 +149,7 @@ async function gotoDocumentationWorkbench(page) {
     tileStats: liveTileStats,
     tileUrlTemplate: OPENSTREETMAP_TEMPLATE,
     tileHost: OPENSTREETMAP_HOST,
-    attribution: OPENSTREETMAP_ATTRIBUTION,
+    attribution: visibleAttribution,
     note: 'Human-requested documentation capture of the fixed visible viewport; no panning, zoom sweep or tile prefetch.',
   };
 }
