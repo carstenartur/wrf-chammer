@@ -14,20 +14,22 @@ on:
       - 'doc/user-guide/**'
       - '.github/workflows/user-guide-screenshots.yml'
   workflow_dispatch:
+    inputs:
+      basemap:
+        description: Basemap used for the generated artifact
+        required: true
+        default: offline-natural-earth
+        type: choice
+        options:
+          - offline-natural-earth
+          - openstreetmap
 
 concurrency:
   group: user-guide-screenshots-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
-  contents: write
-
-env:
-  # Temporary one-off, human-requested capture of one fixed viewport.
-  # This live mode and the write permission are removed before merge.
-  WRF_SCREENSHOT_BASEMAP: openstreetmap
-  WRF_SCREENSHOT_OUTPUT_DIR: doc/user-guide/screenshots
-  WRF_ALLOW_LIVE_OSM_SCREENSHOTS: '1'
+  contents: read
 
 jobs:
   xaver-user-guide-screenshots:
@@ -36,11 +38,33 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Checkout the pull-request branch
+      - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: fix/openstreetmap-user-guide-screenshots
           submodules: recursive
+
+      - name: Select screenshot basemap and isolated output
+        env:
+          REQUESTED_BASEMAP: ${{ github.event_name == 'workflow_dispatch' && inputs.basemap || 'offline-natural-earth' }}
+        run: |
+          case "${REQUESTED_BASEMAP}" in
+            openstreetmap)
+              OUTPUT_DIR='workbench-runs/manual-openstreetmap-screenshots'
+              ALLOW_LIVE='1'
+              ;;
+            offline-natural-earth)
+              OUTPUT_DIR='workbench-runs/ci-user-guide-screenshots'
+              ALLOW_LIVE=''
+              ;;
+            *)
+              echo "Unsupported screenshot basemap: ${REQUESTED_BASEMAP}" >&2
+              exit 2
+              ;;
+          esac
+          echo "WRF_SCREENSHOT_BASEMAP=${REQUESTED_BASEMAP}" >> "${GITHUB_ENV}"
+          echo "WRF_SCREENSHOT_OUTPUT_DIR=${OUTPUT_DIR}" >> "${GITHUB_ENV}"
+          echo "WRF_ALLOW_LIVE_OSM_SCREENSHOTS=${ALLOW_LIVE}" >> "${GITHUB_ENV}"
+          echo "SCREENSHOT_ARTIFACT_DIR=${OUTPUT_DIR}" >> "${GITHUB_ENV}"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -71,26 +95,7 @@ jobs:
           path: ${{ runner.temp }}/user-guide-screenshots.log
           if-no-files-found: warn
 
-      - name: Upload screenshots and basemap provenance
-        uses: actions/upload-artifact@v4
-        with:
-          name: xaver-user-guide-screenshots
-          path: |
-            doc/user-guide/screenshots/*.png
-            doc/user-guide/screenshots/*.provenance.json
-          if-no-files-found: error
-
-      - name: Upload generated UI assets
-        uses: actions/upload-artifact@v4
-        with:
-          name: generated-ui-assets
-          path: |
-            workbench/web/index.html
-            workbench/web/app.js
-            workbench/web/styles.css
-          if-no-files-found: warn
-
-      - name: Verify generated screenshots and OSM provenance
+      - name: Verify generated screenshots and basemap provenance
         run: |
           for file in \
             xaver-01-search.png \
@@ -102,23 +107,37 @@ jobs:
             xaver-05-dry-run-status.png \
             xaver-06-logs.png
           do
-            if [ ! -f "doc/user-guide/screenshots/${file}" ]; then
-              echo "Missing generated screenshot: ${file}"
+            if [ ! -f "${SCREENSHOT_ARTIFACT_DIR}/${file}" ]; then
+              echo "Missing generated screenshot: ${SCREENSHOT_ARTIFACT_DIR}/${file}"
               exit 1
             fi
           done
-          python3 ci/verify-user-guide-map-provenance.py
-
-      - name: Commit this verified capture to the PR branch
-        if: github.event_name == 'pull_request' && github.head_ref == 'fix/openstreetmap-user-guide-screenshots'
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add doc/user-guide/screenshots/*.png
-          git add doc/user-guide/screenshots/xaver-03b-map-domain-wizard.png.provenance.json
-          if git diff --cached --quiet; then
-            echo 'Verified screenshots already match the branch.'
-            exit 0
+          test -f "${SCREENSHOT_ARTIFACT_DIR}/xaver-03b-map-domain-wizard.png.provenance.json"
+          if [ "${WRF_SCREENSHOT_BASEMAP}" = 'openstreetmap' ]; then
+            python3 ci/verify-user-guide-map-provenance.py \
+              "${SCREENSHOT_ARTIFACT_DIR}/xaver-03b-map-domain-wizard.png.provenance.json"
           fi
-          git commit -m 'Update verified OpenStreetMap user-guide screenshots'
-          git push origin HEAD:fix/openstreetmap-user-guide-screenshots
+
+      - name: Verify checked-in OpenStreetMap documentation provenance
+        run: python3 ci/verify-user-guide-map-provenance.py
+
+      - name: Upload generated screenshots and basemap provenance
+        uses: actions/upload-artifact@v4
+        with:
+          name: xaver-user-guide-screenshots
+          path: |
+            workbench-runs/ci-user-guide-screenshots/*.png
+            workbench-runs/ci-user-guide-screenshots/*.provenance.json
+            workbench-runs/manual-openstreetmap-screenshots/*.png
+            workbench-runs/manual-openstreetmap-screenshots/*.provenance.json
+          if-no-files-found: error
+
+      - name: Upload generated UI assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-ui-assets
+          path: |
+            workbench/web/index.html
+            workbench/web/app.js
+            workbench/web/styles.css
+          if-no-files-found: warn
