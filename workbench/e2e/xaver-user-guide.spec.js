@@ -2,9 +2,28 @@ const fs = require('fs');
 const path = require('path');
 const { test, expect } = require('@playwright/test');
 const { installDocumentationTileProvider } = require('./documentation-tile-provider');
+const { resolveScreenshotDirectory } = require('./screenshot-output');
 
 const repoRoot = path.resolve(__dirname, '../..');
-const screenshotDir = path.join(repoRoot, 'doc', 'user-guide', 'screenshots');
+const screenshotDir = resolveScreenshotDirectory(
+  repoRoot,
+  process.env.WRF_SCREENSHOT_OUTPUT_DIR,
+);
+const basemapMode = process.env.WRF_SCREENSHOT_BASEMAP || 'openstreetmap';
+const OPENSTREETMAP_HOST = 'tile.openstreetmap.org';
+const OPENSTREETMAP_TEMPLATE = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+test.describe.configure({ mode: 'serial' });
+
+if (
+  process.env.CI === 'true'
+  && basemapMode === 'openstreetmap'
+  && process.env.WRF_ALLOW_LIVE_OSM_SCREENSHOTS !== '1'
+) {
+  throw new Error(
+    'Live OpenStreetMap screenshots in CI require WRF_ALLOW_LIVE_OSM_SCREENSHOTS=1.',
+  );
+}
 
 async function capture(page, fileName) {
   fs.mkdirSync(screenshotDir, { recursive: true });
@@ -21,31 +40,120 @@ async function captureElement(locator, fileName) {
   });
 }
 
+function writeMapProvenance(fileName, details) {
+  const screenshotPath = path.join(screenshotDir, fileName);
+  const body = fs.readFileSync(screenshotPath);
+  const crypto = require('node:crypto');
+  const provenance = {
+    schema_version: 1,
+    screenshot: fileName,
+    screenshot_sha256: crypto.createHash('sha256').update(body).digest('hex'),
+    basemap: details.basemap,
+    tile_url_template: details.tileUrlTemplate || null,
+    tile_host: details.tileHost || null,
+    successful_tile_responses: details.successfulTileResponses || 0,
+    attribution: details.attribution,
+    generated_at: new Date().toISOString(),
+    generator: 'workbench/e2e/xaver-user-guide.spec.js',
+    note: details.note,
+  };
+  fs.writeFileSync(
+    path.join(screenshotDir, `${fileName}.provenance.json`),
+    `${JSON.stringify(provenance, null, 2)}\n`,
+    'utf8',
+  );
+}
+
 async function gotoDocumentationWorkbench(page) {
-  const tileStats = await installDocumentationTileProvider(page);
+  if (!['openstreetmap', 'offline-natural-earth'].includes(basemapMode)) {
+    throw new Error(`Unsupported WRF_SCREENSHOT_BASEMAP mode: ${basemapMode}`);
+  }
+
+  const liveTileStats = {
+    requests: 0,
+    successful: 0,
+    hosts: new Set(),
+  };
+  let offlineTileStats = null;
+
+  if (basemapMode === 'offline-natural-earth') {
+    offlineTileStats = await installDocumentationTileProvider(page);
+  } else {
+    page.on('response', (response) => {
+      let parsed;
+      try {
+        parsed = new URL(response.url());
+      } catch (_) {
+        return;
+      }
+      if (parsed.hostname !== OPENSTREETMAP_HOST || !/\/\d+\/\d+\/\d+\.png$/.test(parsed.pathname)) {
+        return;
+      }
+      liveTileStats.requests += 1;
+      liveTileStats.hosts.add(parsed.hostname);
+      if (response.ok() || response.status() === 304) liveTileStats.successful += 1;
+    });
+  }
+
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   const map = page.locator('#wizard-map');
   await expect(map).toBeVisible();
-  await expect.poll(() => tileStats.requests).toBeGreaterThanOrEqual(4);
-  await expect.poll(() => tileStats.paths).toBeGreaterThan(0);
-  await expect.poll(() => tileStats.labels).toBeGreaterThan(0);
   await expect.poll(() => map.locator('img.leaflet-tile-loaded').count()).toBeGreaterThanOrEqual(4);
 
+  if (basemapMode === 'offline-natural-earth') {
+    await expect.poll(() => offlineTileStats.requests).toBeGreaterThanOrEqual(4);
+    await expect.poll(() => offlineTileStats.paths).toBeGreaterThan(0);
+    await expect.poll(() => offlineTileStats.labels).toBeGreaterThan(0);
+    await map.evaluate((element) => {
+      element.dataset.basemapReady = 'offline-natural-earth';
+      element.setAttribute(
+        'aria-label',
+        'Offline Natural Earth quality-assurance basemap for selecting the WRF simulation domain',
+      );
+      const attribution = document.querySelector('.simulation-map-attribution');
+      if (attribution) {
+        attribution.textContent =
+          'Offline QA basemap rendered from Natural Earth public-domain geography. It is not the User Guide OpenStreetMap capture.';
+      }
+    });
+    await expect(map).toHaveAttribute('data-basemap-ready', 'offline-natural-earth');
+    return {
+      basemap: 'natural-earth-offline-qa',
+      tileStats: offlineTileStats,
+      attribution: 'Natural Earth public-domain geography',
+      note: 'Deterministic CI quality-assurance rendering; not committed as the OpenStreetMap documentation image.',
+    };
+  }
+
+  await expect.poll(() => liveTileStats.successful, { timeout: 30_000 }).toBeGreaterThanOrEqual(4);
+  expect([...liveTileStats.hosts]).toEqual([OPENSTREETMAP_HOST]);
+  const tileSources = await map.locator('img.leaflet-tile-loaded').evaluateAll((images) =>
+    images.map((image) => image.currentSrc || image.src),
+  );
+  expect(tileSources.length).toBeGreaterThanOrEqual(4);
+  for (const source of tileSources) {
+    expect(new URL(source).hostname).toBe(OPENSTREETMAP_HOST);
+  }
+  const attribution = page.locator('.simulation-map-attribution').first();
+  await expect(attribution).toContainText('OpenStreetMap');
+  const visibleAttribution = ((await attribution.textContent()) || '').trim();
+  expect(visibleAttribution).toContain('OpenStreetMap contributors');
   await map.evaluate((element) => {
-    element.dataset.basemapReady = 'natural-earth';
+    element.dataset.basemapReady = 'openstreetmap';
     element.setAttribute(
       'aria-label',
-      'Interactive Natural Earth basemap for selecting the WRF simulation domain',
+      'Interactive OpenStreetMap basemap for selecting the WRF simulation domain',
     );
-    const attribution = document.querySelector('.simulation-map-attribution');
-    if (attribution) {
-      attribution.textContent =
-        'Offline documentation basemap rendered from Natural Earth public-domain geography. Numeric coordinate fields remain available as a keyboard-accessible alternative.';
-    }
   });
-  await expect(map).toHaveAttribute('data-basemap-ready', 'natural-earth');
-  await expect(page.getByText(/Natural Earth public-domain geography/)).toBeVisible();
-  return tileStats;
+  await expect(map).toHaveAttribute('data-basemap-ready', 'openstreetmap');
+  return {
+    basemap: 'openstreetmap-standard',
+    tileStats: liveTileStats,
+    tileUrlTemplate: OPENSTREETMAP_TEMPLATE,
+    tileHost: OPENSTREETMAP_HOST,
+    attribution: visibleAttribution,
+    note: 'Human-requested documentation capture of the fixed visible viewport; no panning, zoom sweep or tile prefetch.',
+  };
 }
 
 test('capture the Xaver user-guide UI flow', async ({ page }) => {
@@ -85,12 +193,11 @@ test('capture the Xaver user-guide UI flow', async ({ page }) => {
 });
 
 test('plan a map-selected Xaver domain without editing JSON', async ({ page }) => {
-  const tileStats = await gotoDocumentationWorkbench(page);
+  const basemap = await gotoDocumentationWorkbench(page);
 
   await expect(page.getByRole('heading', { name: 'Draw a real map area and estimate the WRF job' })).toBeVisible();
   const map = page.locator('#wizard-map');
   await expect(map).toBeVisible();
-  await expect.poll(() => tileStats.paths).toBeGreaterThan(0);
   await expect(page.locator('#wizard-west')).toHaveValue('2');
   await expect(page.locator('#wizard-north')).toHaveValue('58');
 
@@ -100,10 +207,18 @@ test('plan a map-selected Xaver domain without editing JSON', async ({ page }) =
   await expect(page.locator('#wizard-result')).toContainText('Recommended RAM');
   await expect(page.locator('#wizard-config-preview')).toContainText('"domain_source": "map-bounds"');
   await expect(page.locator('#wizard-config-preview')).toContainText('"quality_profile": "balanced"');
-  await captureElement(page.locator('.simulation-wizard'), 'xaver-03b-map-domain-wizard.png');
-
-  await page.getByRole('button', { name: 'Start planned dry-run' }).click();
-  await expect(page.locator('#wizard-status')).toContainText('finished successfully', { timeout: 30_000 });
+  const screenshotName = 'xaver-03b-map-domain-wizard.png';
+  await captureElement(page.locator('.simulation-wizard'), screenshotName);
+  writeMapProvenance(screenshotName, {
+    basemap: basemap.basemap,
+    tileUrlTemplate: basemap.tileUrlTemplate,
+    tileHost: basemap.tileHost,
+    successfulTileResponses: basemapMode === 'openstreetmap'
+      ? basemap.tileStats.successful
+      : basemap.tileStats.requests,
+    attribution: basemap.attribution,
+    note: basemap.note,
+  });
 });
 
 test('draw a new simulation rectangle directly on the map', async ({ page }) => {

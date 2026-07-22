@@ -11,19 +11,46 @@ The guide uses three different visual categories. They must not be confused:
 | Screenshot | Meaning | Contains computed weather? |
 |---|---|---:|
 | `xaver-01` to `xaver-06` | Search, configuration, planning, dry-run status and logs | No |
-| `xaver-03b-map-domain-wizard.png` | Geographic basemap plus the selected WRF domain | No |
+| `xaver-03b-map-domain-wizard.png` | OpenStreetMap basemap plus the selected WRF domain | No |
 | `xaver-07-weather-map.png` | A rendered layer from real WRF output | Yes |
 
-The normal documentation screenshot command generates only the first two
-categories. A green **User Guide Screenshots** workflow therefore proves that the
-UI flow and geographic planning map render correctly; it does **not** prove that
-WRF produced a meteorological field.
+The checked-in planning screenshots were generated from the real interactive UI
+with visible tiles from the canonical OpenStreetMap endpoint. The map-specific
+screenshot has a sidecar provenance record:
 
-For normal interactive use, the planning widget loads OpenStreetMap tiles. The
-deterministic CI screenshot uses the explicit URL option
-`?basemap=natural-earth` and a small local Natural Earth vector subset so that
-country outlines remain visible without contacting an external tile service.
-Both are geographic context only. Neither is weather data.
+```text
+doc/user-guide/screenshots/
+  xaver-03b-map-domain-wizard.png
+  xaver-03b-map-domain-wizard.png.provenance.json
+```
+
+The provenance record binds the PNG SHA-256 to the tile URL template, tile host,
+number of successful visible tile responses and the attribution text that was
+visible when the screenshot was captured. Verify it with:
+
+```bash
+python3 ci/verify-user-guide-map-provenance.py
+```
+
+A green **User Guide Screenshots** workflow proves that the UI flow and planning
+map render correctly. It does **not** prove that WRF produced a meteorological
+field.
+
+Normal pull-request CI does not contact the community OpenStreetMap tile server.
+It intercepts tile requests with a deterministic local Natural Earth QA provider
+and writes those temporary screenshots to:
+
+```text
+workbench-runs/ci-user-guide-screenshots/
+```
+
+That offline QA output never overwrites or masquerades as the checked-in
+OpenStreetMap documentation images. A manually dispatched workflow may select
+`openstreetmap`; its output is uploaded from
+`workbench-runs/manual-openstreetmap-screenshots/` for explicit review.
+
+Both the OpenStreetMap planning map and the offline Natural Earth QA rendering
+are geographic context only. Neither contains weather data.
 
 The computed result image `xaver-07-weather-map.png` is intentionally absent until
 a complete real-data run has produced WRF-proven visualization artifacts and the
@@ -32,10 +59,12 @@ varying and visibly rendered.
 
 ## Generate the regular UI screenshots
 
-From the repository root:
+From the repository root, a human-reviewed OpenStreetMap capture is generated
+with:
 
 ```bash
-sh ci/generate-user-guide-screenshots.sh
+WRF_SCREENSHOT_BASEMAP=openstreetmap \
+  sh ci/generate-user-guide-screenshots.sh
 ```
 
 The command builds the modern UI, starts the real local Workbench server in the
@@ -45,7 +74,15 @@ browser integration environment and writes screenshots to:
 doc/user-guide/screenshots/
 ```
 
-It captures:
+For deterministic offline QA, use a separate output directory:
+
+```bash
+WRF_SCREENSHOT_BASEMAP=offline-natural-earth \
+WRF_SCREENSHOT_OUTPUT_DIR=workbench-runs/local-user-guide-screenshots \
+  sh ci/generate-user-guide-screenshots.sh
+```
+
+The screenshot command captures:
 
 ```text
 xaver-01-search.png
@@ -126,11 +163,14 @@ The server derives:
 - estimated RAM, storage and wall-clock range;
 - a schema-valid preview configuration.
 
-The blue rectangle is the planned model domain. Country outlines, seas and place
-labels are geographic context. No meteorological values are calculated in this
-view.
+The blue rectangle is the planned model domain. OpenStreetMap roads, places,
+boundaries and waters are geographic context. No meteorological values are
+calculated in this view.
 
-![Guided Xaver map-domain plan with geographic context, grid and resource estimates](user-guide/screenshots/xaver-03b-map-domain-wizard.png)
+![Guided Xaver map-domain plan on OpenStreetMap with grid and resource estimates](user-guide/screenshots/xaver-03b-map-domain-wizard.png)
+
+Basemap © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright).
+The capture provenance is stored beside the PNG and verified in CI.
 
 Expert controls may override grid spacing, vertical levels and output interval.
 All overrides are validated by the server. See
@@ -349,7 +389,8 @@ For a normal UI change:
 
 1. Run `sh ci/generate-user-guide-screenshots.sh`.
 2. Review every generated PNG, especially visible map geography.
-3. Commit intentional screenshot changes with the UI and guide changes.
+3. Verify `python3 ci/verify-user-guide-map-provenance.py`.
+4. Commit intentional screenshot changes with the UI and guide changes.
 
 For a computed weather-result change:
 

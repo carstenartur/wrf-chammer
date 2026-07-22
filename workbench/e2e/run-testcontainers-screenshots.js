@@ -1,9 +1,11 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { GenericContainer } = require('testcontainers');
+const { resolveScreenshotDirectory } = require('./screenshot-output');
 
 const repoRoot = path.resolve(__dirname, '../..');
-const screenshotDir = path.join(repoRoot, 'doc', 'user-guide', 'screenshots');
+const configuredOutput = process.env.WRF_SCREENSHOT_OUTPUT_DIR || 'doc/user-guide/screenshots';
+const screenshotDir = resolveScreenshotDirectory(repoRoot, configuredOutput);
 const expectedScreenshots = [
   'xaver-01-search.png',
   'xaver-02-event-selected.png',
@@ -26,6 +28,9 @@ async function main() {
     .withEnvironment({
       CI: 'true',
       WORKBENCH_SKIP_PLAYWRIGHT_INSTALL: '1',
+      WRF_SCREENSHOT_BASEMAP: process.env.WRF_SCREENSHOT_BASEMAP || 'offline-natural-earth',
+      WRF_SCREENSHOT_OUTPUT_DIR: configuredOutput,
+      WRF_ALLOW_LIVE_OSM_SCREENSHOTS: process.env.WRF_ALLOW_LIVE_OSM_SCREENSHOTS || '',
     })
     .withCommand(['sh', '-lc', 'sleep infinity'])
     .start();
@@ -45,6 +50,10 @@ async function main() {
   const missing = expectedScreenshots.filter((fileName) => !fs.existsSync(path.join(screenshotDir, fileName)));
   if (missing.length > 0) {
     throw new Error(`Missing generated screenshots: ${missing.join(', ')}`);
+  }
+  const provenance = path.join(screenshotDir, 'xaver-03b-map-domain-wizard.png.provenance.json');
+  if (!fs.existsSync(provenance)) {
+    throw new Error(`Missing map screenshot provenance: ${provenance}`);
   }
 }
 

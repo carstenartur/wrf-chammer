@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "screenshot": "xaver-03b-map-domain-wizard.png",
+  "screenshot_sha256": "d765e7cb8b785660e7183390dec53390f4534e6bc491fe1120072f936b026874",
+  "basemap": "openstreetmap-standard",
+  "tile_url_template": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+  "tile_host": "tile.openstreetmap.org",
+  "successful_tile_responses": 10,
+  "attribution": "Basemap © OpenStreetMap contributors. Numeric coordinate fields remain available as a keyboard-accessible alternative.",
+  "generated_at": "2026-07-22T04:37:48.753Z",
+  "generator": "workbench/e2e/xaver-user-guide.spec.js",
+  "note": "Human-requested documentation capture of the fixed visible viewport; no panning, zoom sweep or tile prefetch."
+}
