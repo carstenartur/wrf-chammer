@@ -1,10 +1,11 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { GenericContainer } = require('testcontainers');
+const { resolveScreenshotDirectory } = require('./screenshot-output');
 
 const repoRoot = path.resolve(__dirname, '../..');
 const configuredOutput = process.env.WRF_SCREENSHOT_OUTPUT_DIR || 'doc/user-guide/screenshots';
-const screenshotDir = path.resolve(repoRoot, configuredOutput);
+const screenshotDir = resolveScreenshotDirectory(repoRoot, configuredOutput);
 const expectedScreenshots = [
   'xaver-01-search.png',
   'xaver-02-event-selected.png',
