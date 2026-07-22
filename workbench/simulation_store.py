@@ -41,12 +41,9 @@ class SimulationStore(_core.SimulationStore):
                 "The immutable specification does not reference an available ERA5 input dataset.",
             )
         raw_directory = plan_directory_getter(plan_key)
-        if raw_directory.is_symlink() or not raw_directory.is_dir():
-            raise SimulationStoreError(
-                "input_dataset_unavailable",
-                "The verified ERA5 cache entry is no longer available.",
-            )
         try:
+            if raw_directory.is_symlink() or not raw_directory.is_dir():
+                raise OSError("ERA5 plan directory is unavailable")
             plan_directory = raw_directory.resolve(strict=True)
         except OSError as exc:
             raise SimulationStoreError(
@@ -55,7 +52,11 @@ class SimulationStore(_core.SimulationStore):
             ) from exc
         for sidecar in ("checksums.json", "provenance.json"):
             path = plan_directory / sidecar
-            if path.is_symlink() or not path.is_file():
+            try:
+                unavailable = path.is_symlink() or not path.is_file()
+            except OSError:
+                unavailable = True
+            if unavailable:
                 raise SimulationStoreError(
                     "input_dataset_unavailable",
                     "The verified ERA5 cache metadata is incomplete.",
@@ -78,18 +79,23 @@ class SimulationStore(_core.SimulationStore):
                     "input_dataset_unavailable",
                     "The immutable ERA5 input file path is invalid.",
                 )
-            target = (plan_directory / relative.as_posix()).resolve()
             expected_size = entry.get("size_bytes")
-            if (
-                plan_directory not in target.parents
-                or target.is_symlink()
-                or not target.is_file()
-                or (
-                    isinstance(expected_size, int)
-                    and not isinstance(expected_size, bool)
-                    and target.stat().st_size != expected_size
+            try:
+                target = (plan_directory / relative.as_posix()).resolve(strict=True)
+                unavailable = (
+                    plan_directory not in target.parents
+                    or target.is_symlink()
+                    or not target.is_file()
                 )
-            ):
+                if (
+                    not unavailable
+                    and isinstance(expected_size, int)
+                    and not isinstance(expected_size, bool)
+                ):
+                    unavailable = target.stat().st_size != expected_size
+            except OSError:
+                unavailable = True
+            if unavailable:
                 raise SimulationStoreError(
                     "input_dataset_unavailable",
                     "One or more verified ERA5 input files are no longer available.",
