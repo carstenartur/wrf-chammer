@@ -126,6 +126,8 @@ class Era5CacheService(_core.Era5CacheService):
                 "dependent_simulation_ids"
             ]
             supplied_simulation_ids = request.get("dependent_simulation_ids")
+            if supplied_simulation_ids is None and not expected_simulation_ids:
+                supplied_simulation_ids = []
             if not isinstance(supplied_simulation_ids, list) or any(
                 not isinstance(job_id, str) for job_id in supplied_simulation_ids
             ):
