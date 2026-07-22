@@ -7,14 +7,20 @@ on:
       - 'ci/download-era5.py'
       - 'ci/validate-cds-credentials.py'
       - 'workbench/era5_cache_service.py'
+      - 'workbench/_era5_cache_service_core.py'
+      - 'workbench/era5_dependency_lock.py'
       - 'workbench/era5_credential_service.py'
       - 'workbench/era5_download_manager.py'
       - 'workbench/era5_service.py'
       - 'workbench/era5_planner.py'
+      - 'workbench/simulation_store.py'
+      - 'workbench/_simulation_store_dependency_core.py'
       - 'workbench/server/application.py'
+      - 'workbench/server/_application_result_base.py'
       - 'workbench/server/tests/test_cds_credential_validator.py'
       - 'workbench/server/tests/test_era5_cache_api.py'
       - 'workbench/server/tests/test_era5_cache_service.py'
+      - 'workbench/server/tests/test_era5_cache_simulation_dependencies.py'
       - 'workbench/server/tests/test_era5_credential_api.py'
       - 'workbench/server/tests/test_era5_credential_service.py'
       - 'workbench/server/tests/test_era5_data_api.py'
@@ -37,14 +43,20 @@ on:
       - 'ci/download-era5.py'
       - 'ci/validate-cds-credentials.py'
       - 'workbench/era5_cache_service.py'
+      - 'workbench/_era5_cache_service_core.py'
+      - 'workbench/era5_dependency_lock.py'
       - 'workbench/era5_credential_service.py'
       - 'workbench/era5_download_manager.py'
       - 'workbench/era5_service.py'
       - 'workbench/era5_planner.py'
+      - 'workbench/simulation_store.py'
+      - 'workbench/_simulation_store_dependency_core.py'
       - 'workbench/server/application.py'
+      - 'workbench/server/_application_result_base.py'
       - 'workbench/server/tests/test_cds_credential_validator.py'
       - 'workbench/server/tests/test_era5_cache_api.py'
       - 'workbench/server/tests/test_era5_cache_service.py'
+      - 'workbench/server/tests/test_era5_cache_simulation_dependencies.py'
       - 'workbench/server/tests/test_era5_credential_api.py'
       - 'workbench/server/tests/test_era5_credential_service.py'
       - 'workbench/server/tests/test_era5_data_api.py'
@@ -79,6 +91,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Verify cache dependency syntax
+        run: |
+          python3 -m py_compile \
+            workbench/era5_cache_service.py \
+            workbench/_era5_cache_service_core.py \
+            workbench/era5_dependency_lock.py \
+            workbench/simulation_store.py \
+            workbench/_simulation_store_dependency_core.py \
+            workbench/server/application.py \
+            workbench/server/_application_result_base.py \
+            workbench/server/tests/test_era5_cache_simulation_dependencies.py
+
       - name: Run ERA5 planner, credential, download, and cache tests
         shell: bash
         run: |
@@ -90,6 +114,7 @@ jobs:
             python3 workbench/server/tests/test_era5_download_manager.py -v
             python3 workbench/server/tests/test_era5_download_path_security.py -v
             python3 workbench/server/tests/test_era5_cache_service.py -v
+            python3 workbench/server/tests/test_era5_cache_simulation_dependencies.py -v
             python3 workbench/server/tests/test_ui_public_asset_build.py
             python3 workbench/server/tests/test_era5_credential_api.py
             python3 workbench/server/tests/test_era5_download_api.py
