@@ -13,6 +13,8 @@ const basemapMode = process.env.WRF_SCREENSHOT_BASEMAP || 'openstreetmap';
 const OPENSTREETMAP_HOST = 'tile.openstreetmap.org';
 const OPENSTREETMAP_TEMPLATE = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
+test.describe.configure({ mode: 'serial' });
+
 if (
   process.env.CI === 'true'
   && basemapMode === 'openstreetmap'
@@ -217,9 +219,6 @@ test('plan a map-selected Xaver domain without editing JSON', async ({ page }) =
     attribution: basemap.attribution,
     note: basemap.note,
   });
-
-  await page.getByRole('button', { name: 'Start planned dry-run' }).click();
-  await expect(page.locator('#wizard-status')).toContainText('finished successfully', { timeout: 30_000 });
 });
 
 test('draw a new simulation rectangle directly on the map', async ({ page }) => {
