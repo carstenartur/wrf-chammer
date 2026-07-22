@@ -30,6 +30,9 @@ on:
 permissions:
   contents: read
 
+env:
+  PYTHONPATH: .
+
 concurrency:
   group: persistent-simulation-store-${{ github.ref }}
   cancel-in-progress: true
