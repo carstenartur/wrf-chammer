@@ -78,6 +78,9 @@ on:
 permissions:
   contents: read
 
+env:
+  PYTHONPATH: .
+
 concurrency:
   group: era5-data-api-${{ github.ref }}
   cancel-in-progress: true
