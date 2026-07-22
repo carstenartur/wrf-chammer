@@ -5,8 +5,8 @@
   "description": "Browser tests and user-guide screenshot generation for the WRF Workbench.",
   "scripts": {
     "test": "npm run screenshots:smoke",
-    "screenshots:smoke": "playwright test documentation-tile-provider.spec.js xaver-user-guide.spec.js era5-data-panel.spec.js --project=chromium",
-    "screenshots:docs": "playwright test documentation-tile-provider.spec.js xaver-user-guide.spec.js era5-data-panel.spec.js --project=chromium",
+    "screenshots:smoke": "playwright test screenshot-output.spec.js documentation-tile-provider.spec.js xaver-user-guide.spec.js era5-data-panel.spec.js --project=chromium",
+    "screenshots:docs": "playwright test screenshot-output.spec.js documentation-tile-provider.spec.js xaver-user-guide.spec.js era5-data-panel.spec.js --project=chromium",
     "screenshots:real-data": "playwright test xaver-weather-map.spec.js --project=chromium --grep @real-data",
     "screenshots": "npm run screenshots:docs",
     "screenshots:container": "node run-testcontainers-screenshots.js"
