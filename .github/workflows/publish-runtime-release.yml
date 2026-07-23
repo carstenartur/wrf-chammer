@@ -144,14 +144,21 @@ jobs:
         run: |
           set -euo pipefail
 
-          publish_image() {
-            local local_image="$1"
-            local remote_image="$2"
-            local output_name="$3"
+          wrf_remote="${IMAGE_NAMESPACE}/wrf-chammer-wrf:${RELEASE}"
+          wps_remote="${IMAGE_NAMESPACE}/wrf-chammer-wps:${RELEASE}"
+          postprocessing_remote="${IMAGE_NAMESPACE}/wrf-chammer-postprocessing:${RELEASE}"
+
+          for remote_image in "${wrf_remote}" "${wps_remote}" "${postprocessing_remote}"; do
             if docker manifest inspect "${remote_image}" >/dev/null 2>&1; then
               echo "Refusing to overwrite existing immutable runtime tag ${remote_image}" >&2
               exit 1
             fi
+          done
+
+          publish_image() {
+            local local_image="$1"
+            local remote_image="$2"
+            local output_name="$3"
             docker tag "${local_image}" "${remote_image}"
             docker push "${remote_image}"
             local repository="${remote_image%:*}"
@@ -167,15 +174,15 @@ jobs:
 
           publish_image \
             "wrf-chammer-wrf-local:${RELEASE}" \
-            "${IMAGE_NAMESPACE}/wrf-chammer-wrf:${RELEASE}" \
+            "${wrf_remote}" \
             wrf_digest
           publish_image \
             "wrf-chammer-wps-local:${RELEASE}" \
-            "${IMAGE_NAMESPACE}/wrf-chammer-wps:${RELEASE}" \
+            "${wps_remote}" \
             wps_digest
           publish_image \
             "wrf-chammer-postprocessing-local:${RELEASE}" \
-            "${IMAGE_NAMESPACE}/wrf-chammer-postprocessing:${RELEASE}" \
+            "${postprocessing_remote}" \
             postprocessing_digest
 
       - name: Generate and validate installable runtime manifest
