@@ -2,7 +2,7 @@ name: Docker Reproducible Build
 
 # Trigger policy:
 # - upstream/scientific source and repository-root build changes are included by default;
-# - fork-owned application, documentation, visualization and unrelated CI changes are excluded;
+# - fork-owned application, migration, documentation, visualization and unrelated CI changes are excluded;
 # - only the Workbench smoke-test dependencies used below are added back explicitly.
 # Keep this contract synchronized with ci/verify-heavy-workflow-triggers.py.
 on:
@@ -10,6 +10,7 @@ on:
     paths:
       - '**'
       - '!doc/**'
+      - '!migration/**'
       - '!**/*.md'
       - '!workbench/**'
       - '!visualization/**'
@@ -35,6 +36,7 @@ on:
     paths:
       - '**'
       - '!doc/**'
+      - '!migration/**'
       - '!**/*.md'
       - '!workbench/**'
       - '!visualization/**'
