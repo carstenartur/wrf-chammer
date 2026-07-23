@@ -148,6 +148,10 @@ jobs:
             local local_image="$1"
             local remote_image="$2"
             local output_name="$3"
+            if docker manifest inspect "${remote_image}" >/dev/null 2>&1; then
+              echo "Refusing to overwrite existing immutable runtime tag ${remote_image}" >&2
+              exit 1
+            fi
             docker tag "${local_image}" "${remote_image}"
             docker push "${remote_image}"
             local repository="${remote_image%:*}"
