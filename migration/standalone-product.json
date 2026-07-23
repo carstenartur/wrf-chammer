@@ -38,9 +38,13 @@
     ".github/workflows/wps-integration-test.yml",
     ".github/workflows/heavy-workflow-trigger-policy-tests.yml",
     ".github/workflows/standalone-repository-extraction-tests.yml",
+    ".github/workflows/publish-runtime-release.yml",
+    ".github/workflows/runtime-release-publishing-tests.yml",
     "ci/verify-heavy-workflow-triggers.py",
     "ci/verify-standalone-product-extraction.py",
-    "ci/test_standalone_repository_extraction.py"
+    "ci/test_standalone_repository_extraction.py",
+    "ci/test_runtime_release_workflow.py",
+    "doc/RUNTIME_RELEASE_PUBLISHING.md"
   ],
   "allowed_export_roots": [
     ".github",
