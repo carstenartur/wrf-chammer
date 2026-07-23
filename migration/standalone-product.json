@@ -23,10 +23,12 @@
     "Dockerfile.backend",
     "Dockerfile.era5",
     "Dockerfile.postproc",
-    "Dockerfile.postprocessing"
+    "Dockerfile.postprocessing",
+    "migration/runtime-source-baseline.json"
   ],
   "path_renames": {
-    "migration/standalone-root/": ""
+    "migration/standalone-root/": "",
+    "migration/runtime-source-baseline.json": "runtime/source-baseline.json"
   },
   "allowed_export_roots": [
     ".github",
@@ -50,6 +52,7 @@
   ],
   "required_export_paths": [
     "README.md",
+    "runtime/source-baseline.json",
     "wrf-chammer",
     "workbench/cli.py",
     "workbench/server/application.py",
