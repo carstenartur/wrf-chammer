@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import tempfile
 import threading
@@ -59,11 +60,13 @@ def main() -> int:
         specification_root = root / "specifications"
         specification_directory = specification_root / specification_key
         specification_directory.mkdir(parents=True)
+        namelist_wps = "&share\n max_dom = 1,\n/\n"
+        namelist_input = "&time_control\n run_hours = 6,\n/\n"
         (specification_directory / "namelist.wps").write_text(
-            "&share\n max_dom = 1,\n/\n", encoding="utf-8"
+            namelist_wps, encoding="utf-8"
         )
         (specification_directory / "namelist.input").write_text(
-            "&time_control\n run_hours = 6,\n/\n", encoding="utf-8"
+            namelist_input, encoding="utf-8"
         )
         runtime = {
             name: {
@@ -97,6 +100,20 @@ def main() -> int:
                             "sha256": "f" * 64,
                         }
                     ],
+                },
+                "namelists": {
+                    "namelist.wps": {
+                        "content": namelist_wps,
+                        "sha256": hashlib.sha256(
+                            namelist_wps.encode("utf-8")
+                        ).hexdigest(),
+                    },
+                    "namelist.input": {
+                        "content": namelist_input,
+                        "sha256": hashlib.sha256(
+                            namelist_input.encode("utf-8")
+                        ).hexdigest(),
+                    },
                 },
                 "runtime": runtime,
                 "source_revision": "1" * 40,
@@ -141,6 +158,11 @@ def main() -> int:
             assert (
                 "run_hours = 6"
                 in manifest["resolved_namelists"]["namelist_input"]["content"]
+            )
+            assert (
+                manifest["resolved_namelists"]["namelist_input"]
+                ["verified_against_immutable_identity"]
+                is True
             )
             assert len(manifest["integrity"]["canonical_payload_sha256"]) == 64
 
