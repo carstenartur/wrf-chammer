@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import re
 from datetime import datetime
@@ -13,7 +14,8 @@ from typing import Any
 FORMAT_NAME = "wrf-chammer-run-manifest"
 FORMAT_VERSION = 1
 _SPEC_KEY_RE = re.compile(r"^[0-9a-f]{64}$")
-_WINDOWS_ABSOLUTE_RE = re.compile(r"^[A-Za-z]:[\\/]" )
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_WINDOWS_ABSOLUTE_RE = re.compile(r"^[A-Za-z]:[\\/]")
 _SECRET_KEY_PARTS = (
     "api_key",
     "apikey",
@@ -82,7 +84,10 @@ class SimulationRunManifestService:
             )
 
         specification = self._load_specification(specification_key)
-        resolved_namelists = self._resolved_namelists(specification_key)
+        resolved_namelists = self._resolved_namelists(
+            specification_key,
+            specification,
+        )
         manifest: dict[str, Any] = {
             "format": {"name": FORMAT_NAME, "version": FORMAT_VERSION},
             "simulation": self._simulation_snapshot(job),
@@ -135,12 +140,23 @@ class SimulationRunManifestService:
             )
         return specification
 
-    def _resolved_namelists(self, specification_key: str) -> dict[str, Any]:
+    def _resolved_namelists(
+        self,
+        specification_key: str,
+        specification: dict[str, Any],
+    ) -> dict[str, Any]:
         root_value = getattr(self.specification_service, "root", None)
         if not isinstance(root_value, Path):
             raise SimulationRunManifestError(
                 "run_manifest_unavailable",
                 "The immutable specification artifact root is unavailable.",
+            )
+        identity = specification.get("identity")
+        expected_namelists = identity.get("namelists") if isinstance(identity, dict) else None
+        if not isinstance(expected_namelists, dict):
+            raise SimulationRunManifestError(
+                "run_manifest_integrity_error",
+                "The immutable specification has no verified namelist identity.",
             )
         try:
             root = root_value.resolve(strict=True)
@@ -161,6 +177,18 @@ class SimulationRunManifestService:
             ("namelist.wps", "namelist_wps"),
             ("namelist.input", "namelist_input"),
         ):
+            expected = expected_namelists.get(filename)
+            expected_sha = expected.get("sha256") if isinstance(expected, dict) else None
+            expected_content = expected.get("content") if isinstance(expected, dict) else None
+            if (
+                not isinstance(expected_sha, str)
+                or not _SHA256_RE.fullmatch(expected_sha)
+                or not isinstance(expected_content, str)
+            ):
+                raise SimulationRunManifestError(
+                    "run_manifest_integrity_error",
+                    f"The immutable identity for {filename} is invalid.",
+                )
             path = directory / filename
             try:
                 if path.is_symlink() or not path.is_file():
@@ -168,18 +196,28 @@ class SimulationRunManifestService:
                 resolved = path.resolve(strict=True)
                 if resolved.parent != directory:
                     raise OSError(f"{filename} escaped specification directory")
-                content = resolved.read_text(encoding="utf-8")
+                encoded = resolved.read_bytes()
+                content = encoded.decode("utf-8")
             except (OSError, UnicodeError) as exc:
                 raise SimulationRunManifestError(
                     "run_manifest_integrity_error",
                     f"The resolved {filename} artifact could not be verified.",
                 ) from exc
-            encoded = content.encode("utf-8")
+            actual_sha = hashlib.sha256(encoded).hexdigest()
+            if (
+                not hmac.compare_digest(actual_sha, expected_sha)
+                or content != expected_content
+            ):
+                raise SimulationRunManifestError(
+                    "run_manifest_integrity_error",
+                    f"The resolved {filename} artifact differs from the immutable identity.",
+                )
             result[key] = {
                 "filename": filename,
                 "content": content,
                 "size_bytes": len(encoded),
-                "sha256": hashlib.sha256(encoded).hexdigest(),
+                "sha256": actual_sha,
+                "verified_against_immutable_identity": True,
             }
         return result
 
