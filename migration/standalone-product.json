@@ -14,6 +14,7 @@
     "ci/",
     ".github/workflows/",
     "tests/era5-mini/",
+    "runtime/",
     "migration/standalone-root/"
   ],
   "include_files": [
@@ -62,9 +63,12 @@
   ],
   "required_export_paths": [
     "README.md",
+    "runtime/README.md",
+    "runtime/release-manifest.schema.json",
     "runtime/source-baseline.json",
     "wrf-chammer",
     "workbench/cli.py",
+    "workbench/runtime_image_service.py",
     "workbench/server/application.py",
     "workbench/simulation_store.py",
     "workbench/simulation_run_manifest.py",
@@ -87,11 +91,5 @@
     "tools",
     "var"
   ],
-  "known_runtime_couplings": [
-    {
-      "path": "workbench/cli.py",
-      "needle": "docker\", \"build\", \"-f\", \"Dockerfile",
-      "reason": "The current developer command still builds WRF and WPS from the full fork checkout. The standalone user path must pull digest-pinned release images instead."
-    }
-  ]
+  "known_runtime_couplings": []
 }
