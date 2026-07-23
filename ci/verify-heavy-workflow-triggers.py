@@ -20,6 +20,9 @@ COMMON_EXCLUDED = (
     "ci/verify-heavy-workflow-triggers.py",
     ".github/workflows/simulation-api-tests.yml",
     ".github/workflows/heavy-workflow-trigger-policy-tests.yml",
+    "Dockerfile.backend",
+    "Dockerfile.postproc",
+    "Dockerfile.postprocessing",
 )
 
 CONTRACTS = {
@@ -113,6 +116,20 @@ def _trigger_block(lines: list[str], trigger: str) -> list[str]:
     return lines[start:end]
 
 
+def _parse_path_scalar(raw: str) -> str:
+    value = raw.strip()
+    if not value:
+        raise AssertionError("Empty path pattern")
+    if value[0] in {'"', "'"}:
+        parsed = ast.literal_eval(value)
+        if not isinstance(parsed, str):
+            raise AssertionError(f"Non-string path pattern: {parsed!r}")
+        return parsed
+    # YAML path examples are often unquoted. A comment starts only after
+    # whitespace so literal '#' characters in a path remain valid.
+    return re.split(r"\s+#", value, maxsplit=1)[0].rstrip()
+
+
 def _paths_from_block(block: list[str], trigger: str) -> list[str]:
     if any(line.strip() == "paths-ignore:" for line in block):
         raise AssertionError(
@@ -134,10 +151,7 @@ def _paths_from_block(block: list[str], trigger: str) -> list[str]:
         stripped = line.strip()
         if not stripped.startswith("- "):
             raise AssertionError(f"Unexpected {trigger} paths line: {line!r}")
-        value = ast.literal_eval(stripped[2:].strip())
-        if not isinstance(value, str):
-            raise AssertionError(f"Non-string path pattern: {value!r}")
-        patterns.append(value)
+        patterns.append(_parse_path_scalar(stripped[2:]))
     if not patterns:
         raise AssertionError(f"Empty paths list for {trigger}")
     return patterns
@@ -196,6 +210,7 @@ def _verify_workflow(relative_path: str, contract: dict[str, tuple[str, ...]]) -
         "!visualization/**",
         "!ci/**",
         "!.github/workflows/**",
+        "!Dockerfile*",
     ):
         if required not in pull_patterns:
             raise AssertionError(f"{relative_path}: missing stable exclusion {required}")
