@@ -1,0 +1,244 @@
+name: Publish Runtime Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Immutable runtime release identifier, for example 0.1.0
+        required: true
+        type: string
+      product_source_revision:
+        description: Full standalone Workbench Git commit distributed with this runtime
+        required: true
+        type: string
+      publish:
+        description: Push tested images to GHCR and generate the installable manifest
+        required: true
+        default: false
+        type: boolean
+      github_release_tag:
+        description: Optional existing GitHub release tag to receive the generated manifest
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: publish-runtime-release-${{ inputs.release }}
+  cancel-in-progress: false
+
+env:
+  RELEASE: ${{ inputs.release }}
+  PRODUCT_SOURCE_REVISION: ${{ inputs.product_source_revision }}
+  REGISTRY: ghcr.io
+  IMAGE_NAMESPACE: ghcr.io/carstenartur
+
+jobs:
+  build-test-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - name: Validate release inputs
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+
+          release = os.environ['RELEASE']
+          revision = os.environ['PRODUCT_SOURCE_REVISION']
+          if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._+-]{0,127}', release):
+              raise SystemExit('Invalid runtime release identifier')
+          if not re.fullmatch(r'[0-9a-f]{40,64}', revision):
+              raise SystemExit('product_source_revision must be a full lowercase Git SHA')
+          PY
+
+      - name: Checkout complete WRF runtime source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Record build provenance
+        run: |
+          mkdir -p "${RUNNER_TEMP}/runtime-release"
+          cat > "${RUNNER_TEMP}/runtime-release/build-provenance.json" <<JSON
+          {
+            "runtime_source_repository": "${GITHUB_REPOSITORY}",
+            "runtime_source_revision": "${GITHUB_SHA}",
+            "product_source_revision": "${PRODUCT_SOURCE_REVISION}",
+            "release": "${RELEASE}",
+            "platform": "linux/amd64",
+            "published": ${{ inputs.publish }}
+          }
+          JSON
+
+      - name: Build WRF execution image
+        run: |
+          docker build \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --label "org.opencontainers.image.version=${RELEASE}" \
+            --tag "wrf-chammer-wrf-local:${RELEASE}" \
+            -f Dockerfile .
+
+      - name: Verify and smoke-test WRF image
+        run: |
+          docker run --rm "wrf-chammer-wrf-local:${RELEASE}" \
+            /usr/local/bin/verify-wrf-runtime.sh
+          docker run --rm "wrf-chammer-wrf-local:${RELEASE}" \
+            /usr/local/bin/smoke-test-wrf.sh
+
+      - name: Build WPS base image
+        run: |
+          docker build \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --label "org.opencontainers.image.version=${RELEASE}" \
+            --tag "wrf-chammer-wps-base-local:${RELEASE}" \
+            -f Dockerfile.wps .
+          docker run --rm "wrf-chammer-wps-base-local:${RELEASE}" \
+            /usr/local/bin/verify-wps-runtime.sh
+
+      - name: Build WPS and ERA5 execution image
+        run: |
+          docker build \
+            --build-arg "WPS_IMAGE=wrf-chammer-wps-base-local:${RELEASE}" \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --label "org.opencontainers.image.version=${RELEASE}" \
+            --tag "wrf-chammer-wps-local:${RELEASE}" \
+            -f Dockerfile.era5 .
+
+      - name: Run bundled WPS integration test
+        env:
+          ERA5_IMAGE: wrf-chammer-wps-local:${{ inputs.release }}
+          WORKDIR: /tmp/wrf-chammer-runtime-release-wps
+        run: sh ci/test-era5-wps-integration.sh
+
+      - name: Build postprocessing execution image
+        run: |
+          docker build \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --label "org.opencontainers.image.version=${RELEASE}" \
+            --tag "wrf-chammer-postprocessing-local:${RELEASE}" \
+            -f Dockerfile.postprocessing .
+          docker run --rm "wrf-chammer-postprocessing-local:${RELEASE}" \
+            python3 /usr/local/bin/run-postprocessing-step.py --help
+
+      - name: Log in to GitHub Container Registry
+        if: ${{ inputs.publish }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push tested images and capture registry digests
+        if: ${{ inputs.publish }}
+        id: publish
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          publish_image() {
+            local local_image="$1"
+            local remote_image="$2"
+            local output_name="$3"
+            docker tag "${local_image}" "${remote_image}"
+            docker push "${remote_image}"
+            local repository="${remote_image%:*}"
+            local digest
+            digest="$(docker image inspect "${remote_image}" --format '{{range .RepoDigests}}{{println .}}{{end}}' \
+              | awk -v prefix="${repository}@" 'index($0,prefix)==1 {sub(/^.*@/,""); print; exit}')"
+            if [[ ! "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "Could not resolve registry digest for ${remote_image}" >&2
+              exit 1
+            fi
+            echo "${output_name}=${digest}" >> "${GITHUB_OUTPUT}"
+          }
+
+          publish_image \
+            "wrf-chammer-wrf-local:${RELEASE}" \
+            "${IMAGE_NAMESPACE}/wrf-chammer-wrf:${RELEASE}" \
+            wrf_digest
+          publish_image \
+            "wrf-chammer-wps-local:${RELEASE}" \
+            "${IMAGE_NAMESPACE}/wrf-chammer-wps:${RELEASE}" \
+            wps_digest
+          publish_image \
+            "wrf-chammer-postprocessing-local:${RELEASE}" \
+            "${IMAGE_NAMESPACE}/wrf-chammer-postprocessing:${RELEASE}" \
+            postprocessing_digest
+
+      - name: Generate and validate installable runtime manifest
+        if: ${{ inputs.publish }}
+        env:
+          WRF_DIGEST: ${{ steps.publish.outputs.wrf_digest }}
+          WPS_DIGEST: ${{ steps.publish.outputs.wps_digest }}
+          POSTPROCESSING_DIGEST: ${{ steps.publish.outputs.postprocessing_digest }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          release = os.environ['RELEASE']
+          namespace = os.environ['IMAGE_NAMESPACE']
+          payload = {
+              'format': {'name': 'wrf-chammer-runtime-release', 'version': 1},
+              'release': release,
+              'product_source_revision': os.environ['PRODUCT_SOURCE_REVISION'],
+              'images': {
+                  'wps': {
+                      'reference': f'{namespace}/wrf-chammer-wps:{release}',
+                      'digest': os.environ['WPS_DIGEST'],
+                  },
+                  'wrf': {
+                      'reference': f'{namespace}/wrf-chammer-wrf:{release}',
+                      'digest': os.environ['WRF_DIGEST'],
+                  },
+                  'postprocessing': {
+                      'reference': f'{namespace}/wrf-chammer-postprocessing:{release}',
+                      'digest': os.environ['POSTPROCESSING_DIGEST'],
+                  },
+              },
+          }
+          target = Path(os.environ['RUNNER_TEMP']) / 'runtime-release' / 'release-manifest.json'
+          target.write_text(json.dumps(payload, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          PY
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          from workbench.runtime_image_service import load_release_manifest
+
+          path = Path(os.environ['RUNNER_TEMP']) / 'runtime-release' / 'release-manifest.json'
+          manifest = load_release_manifest(path)
+          assert manifest['release'] == os.environ['RELEASE']
+          assert manifest['product_source_revision'] == os.environ['PRODUCT_SOURCE_REVISION']
+          PY
+          sha256sum "${RUNNER_TEMP}/runtime-release/release-manifest.json" \
+            > "${RUNNER_TEMP}/runtime-release/release-manifest.json.sha256"
+
+      - name: Attach manifest to an existing GitHub release
+        if: ${{ inputs.publish && inputs.github_release_tag != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.github_release_tag }}
+        run: |
+          gh release upload "${RELEASE_TAG}" \
+            "${RUNNER_TEMP}/runtime-release/release-manifest.json" \
+            "${RUNNER_TEMP}/runtime-release/release-manifest.json.sha256" \
+            --clobber \
+            --repo "${GITHUB_REPOSITORY}"
+
+      - name: Upload release evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-release-${{ inputs.release }}
+          path: ${{ runner.temp }}/runtime-release/
+          if-no-files-found: error
