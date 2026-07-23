@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "captured_for": "standalone-product-repository-extraction",
+  "captured_at": "2026-07-23T00:00:00Z",
+  "wrf_source": {
+    "repository": "https://github.com/carstenartur/wrf-chammer.git",
+    "revision": "f18e0f6068bbedb2b29a849c38087b244a5aef0b",
+    "upstream_repository": "https://github.com/wrf-model/WRF.git",
+    "upstream_revision": null,
+    "upstream_diff_audit": "pending"
+  },
+  "wps_source": {
+    "repository": "https://github.com/wrf-model/WPS.git",
+    "revision": "v4.6.0"
+  },
+  "release_images": {
+    "wrf": {
+      "reference": null,
+      "digest": null,
+      "status": "not-yet-published"
+    },
+    "wps": {
+      "reference": null,
+      "digest": null,
+      "status": "not-yet-published"
+    },
+    "era5": {
+      "reference": null,
+      "digest": null,
+      "status": "not-yet-published"
+    },
+    "postprocessing": {
+      "reference": null,
+      "digest": null,
+      "status": "not-yet-published"
+    }
+  },
+  "honesty": "This file records the migration baseline. It is not a release manifest and must not be used as evidence that public runtime images or a real Xaver run exist."
+}
