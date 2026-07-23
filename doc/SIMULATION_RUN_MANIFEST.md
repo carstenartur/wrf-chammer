@@ -4,13 +4,15 @@ Every persistent simulation can expose a deterministic, machine-readable snapsho
 its immutable configuration, verified inputs, runtime identities, pipeline state,
 indexed artifacts and recorded resource measurements.
 
-## Endpoint
+## Endpoint and GUI export
 
 ```http
 GET /api/simulations/{simulation-id}/run-manifest
 ```
 
-The endpoint is local-only like the rest of the Workbench API. The response contains:
+The persistent simulation detail view provides a **Download run manifest** action for
+the selected job. It uses this same local-only endpoint and assigns a job-specific
+JSON filename. The response contains:
 
 ```json
 {
