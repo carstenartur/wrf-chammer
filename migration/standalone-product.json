@@ -20,7 +20,7 @@
   "include_files": [
     "wrf-chammer",
     ".gitignore",
-    "LICENSE",
+    "LICENSE.txt",
     "Dockerfile.backend",
     "Dockerfile.era5",
     "Dockerfile.postproc",
@@ -29,7 +29,8 @@
   ],
   "path_renames": {
     "migration/standalone-root/": "",
-    "migration/runtime-source-baseline.json": "runtime/source-baseline.json"
+    "migration/runtime-source-baseline.json": "runtime/source-baseline.json",
+    "LICENSE.txt": "THIRD_PARTY_NOTICES/WRF-LICENSE.txt"
   },
   "remove_after_export": [
     ".github/workflows/docker-build.yml",
@@ -49,9 +50,9 @@
     "Dockerfile.era5",
     "Dockerfile.postproc",
     "Dockerfile.postprocessing",
-    "LICENSE",
     "README.md",
     "SECURITY.md",
+    "THIRD_PARTY_NOTICES",
     "ci",
     "doc",
     "migration-report.json",
@@ -63,6 +64,7 @@
   ],
   "required_export_paths": [
     "README.md",
+    "THIRD_PARTY_NOTICES/WRF-LICENSE.txt",
     "runtime/README.md",
     "runtime/release-manifest.schema.json",
     "runtime/source-baseline.json",
