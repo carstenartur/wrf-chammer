@@ -11,6 +11,7 @@ from typing import Iterable
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 COMMON_EXCLUDED = (
+    "README.md",
     "doc/USER_GUIDE.md",
     "workbench/simulation_run_manifest.py",
     "workbench/server/tests/test_simulation_reproduction.py",
@@ -18,6 +19,7 @@ COMMON_EXCLUDED = (
     "visualization/viewer/app.js",
     "ci/verify-heavy-workflow-triggers.py",
     ".github/workflows/simulation-api-tests.yml",
+    ".github/workflows/heavy-workflow-trigger-policy-tests.yml",
 )
 
 CONTRACTS = {
