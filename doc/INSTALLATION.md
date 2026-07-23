@@ -45,6 +45,40 @@ python3 wrf-chammer start --open
 python3 wrf-chammer start --json
 ```
 
+## Install a real WRF/WPS runtime release
+
+A normal installation does not compile WRF or WPS locally. Obtain the runtime release
+manifest distributed with the same Workbench release, then run:
+
+```bash
+python3 wrf-chammer images pull \
+  --manifest /path/to/release-manifest.json
+```
+
+The manifest binds the exact Workbench source revision to digest-pinned WPS, WRF, and
+postprocessing images. The command pulls `reference@sha256` selectors, verifies the
+registry digests, and atomically activates the release.
+
+Inspect the active runtime:
+
+```bash
+python3 wrf-chammer images status
+python3 wrf-chammer images status --json
+```
+
+`update-images` remains a compatibility alias:
+
+```bash
+python3 wrf-chammer update-images \
+  --manifest /path/to/release-manifest.json
+```
+
+It now pulls a verified release and never starts a local compiler build.
+
+The repository contains `runtime/release-manifest.example.json` only as a format
+example. Its zero digests are deliberately unpublished and unusable. A real release
+must provide successfully built and published image digests.
+
 ## Check readiness
 
 ```bash
@@ -60,7 +94,8 @@ The checks cover:
 - free disk space,
 - writable Workbench run directory,
 - Docker CLI and daemon,
-- local WRF and WPS images,
+- active runtime release integrity,
+- exact WPS, WRF, and postprocessing image digests,
 - ERA5/CDS credential presence.
 
 Each check has one of these states:
@@ -97,21 +132,19 @@ Runtime state and the local server log are stored under:
 workbench-runs/.runtime/
 ```
 
-## Build or refresh runtime images
+The active runtime record is stored as `runtime-images.json`. It contains only release
+metadata, image references, digests, inspected image IDs, and a canonical integrity
+checksum; it does not contain registry credentials.
 
-```bash
-python3 wrf-chammer update-images
-```
+## Developer source builds
 
-This builds:
+Building WRF and WPS from source remains possible in the WRF runtime source repository
+using its Dockerfiles and documented build workflows. It is an explicit developer or
+audit operation, not an automatic fallback of the installed Workbench.
 
-```text
-wrf-reproducible:latest
-wps-reproducible:latest
-```
-
-The images are currently built locally. Publishing pinned release images is a
-later part of issue #42; real jobs must record the image identifier used.
+After a local source build, developers must create an equivalent release/activation
+record from the inspected image identities before real jobs can freeze those runtimes.
+Mutable `latest` tags alone are not accepted as reproducible identity.
 
 ## Developer-compatible server command
 
