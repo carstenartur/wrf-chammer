@@ -28,7 +28,7 @@ concurrency:
 jobs:
   extraction-contract:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout complete history
         uses: actions/checkout@v4
@@ -46,6 +46,60 @@ jobs:
       - name: Verify extraction manifest and plan
         run: python3 ci/test_standalone_repository_extraction.py
 
+      - name: Install history filtering tool
+        run: |
+          python3 -m pip install --user --disable-pip-version-check git-filter-repo
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Export real standalone repository with history
+        run: |
+          python3 migration/export-standalone-product.py \
+            "${RUNNER_TEMP}/wrf-chammer-workbench" \
+            --source . \
+            --allow-known-couplings
+
+      - name: Verify exported product checkout
+        working-directory: ${{ runner.temp }}/wrf-chammer-workbench
+        run: |
+          test -f README.md
+          test -f runtime/source-baseline.json
+          test -f workbench/cli.py
+          test -f workbench/server/application.py
+          test -d visualization
+          test ! -e phys
+          test ! -e dyn_em
+          test ! -e main
+          test ! -e .github/workflows/docker-build.yml
+          test ! -e .github/workflows/docker-wps-build.yml
+          test ! -e .github/workflows/standalone-repository-extraction-tests.yml
+          python3 -m py_compile \
+            wrf-chammer \
+            workbench/cli.py \
+            workbench/server/application.py \
+            workbench/simulation_store.py
+          python3 wrf-chammer doctor --skip-images --json \
+            > "${RUNNER_TEMP}/standalone-doctor.json"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('migration-report.json').read_text(encoding='utf-8'))
+          assert report['source_repository'] == 'carstenartur/wrf-chammer'
+          assert len(report['source_revision_before_filter']) == 40
+          assert report['tracked_file_count'] > 50
+          assert report['forbidden_roots'] == []
+          assert report['known_runtime_couplings']
+          assert report['ready_for_standalone_release'] is False
+          assert '.github/workflows/docker-build.yml' in report['fork_only_paths_removed']
+          assert '.github/workflows/standalone-repository-extraction-tests.yml' in report['fork_only_paths_removed']
+
+          doctor = json.loads(Path("${RUNNER_TEMP}/standalone-doctor.json").read_text(encoding='utf-8'))
+          assert doctor['status'] in {'ready', 'warning'}
+          assert doctor['checks']
+          PY
+          test "$(git rev-list --count HEAD -- workbench/cli.py)" -gt 1
+          git fsck --no-dangling
+
       - name: Upload source-boundary report
         if: always()
         run: |
@@ -58,5 +112,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: standalone-repository-extraction-report
-          path: ${{ runner.temp }}/standalone-source-boundary.json
+          path: |
+            ${{ runner.temp }}/standalone-source-boundary.json
+            ${{ runner.temp }}/standalone-doctor.json
+            ${{ runner.temp }}/wrf-chammer-workbench/migration-report.json
           if-no-files-found: error
