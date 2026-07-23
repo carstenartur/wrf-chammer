@@ -1,0 +1,59 @@
+name: Runtime Release Publishing Tests
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/publish-runtime-release.yml'
+      - '.github/workflows/runtime-release-publishing-tests.yml'
+      - 'ci/test_runtime_release_workflow.py'
+      - 'doc/RUNTIME_RELEASE_PUBLISHING.md'
+      - 'migration/standalone-product.json'
+  push:
+    branches: [master, develop]
+    paths:
+      - '.github/workflows/publish-runtime-release.yml'
+      - '.github/workflows/runtime-release-publishing-tests.yml'
+      - 'ci/test_runtime_release_workflow.py'
+      - 'doc/RUNTIME_RELEASE_PUBLISHING.md'
+      - 'migration/standalone-product.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-release-publishing-policy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publishing-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify Python syntax
+        run: python3 -m py_compile ci/test_runtime_release_workflow.py
+
+      - name: Verify manual tested publication contract
+        run: python3 ci/test_runtime_release_workflow.py
+
+      - name: Verify publisher is excluded from standalone product export
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          manifest = json.loads(Path('migration/standalone-product.json').read_text(encoding='utf-8'))
+          removed = set(manifest['remove_after_export'])
+          required = {
+              '.github/workflows/publish-runtime-release.yml',
+              '.github/workflows/runtime-release-publishing-tests.yml',
+              'ci/test_runtime_release_workflow.py',
+              'doc/RUNTIME_RELEASE_PUBLISHING.md',
+          }
+          missing = sorted(required - removed)
+          if missing:
+              raise SystemExit(f'Runtime publisher leaked into product export: {missing}')
+          PY
