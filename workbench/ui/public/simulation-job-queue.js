@@ -140,7 +140,8 @@ class SimulationJobQueue extends HTMLElement {
     const labels = {
       enqueue: 'Queueing the simulation for a worker…',
       cancel: 'Requesting safe cancellation…',
-      retry: 'Creating a new retry job with the same immutable specification…',
+      retry: 'Creating a retry attempt after the failed or cancelled job…',
+      reproduce: 'Creating an exact READY reproduction from the immutable specification…',
     };
     this.message = labels[action] || 'Updating simulation…';
     this.messageKind = 'pending';
@@ -154,8 +155,10 @@ class SimulationJobQueue extends HTMLElement {
       this.message = action === 'enqueue'
         ? 'Simulation is queued. It will remain queued until a separate worker claims it.'
         : action === 'retry'
-          ? 'A new READY retry job was created; the previous attempt remains unchanged.'
-          : 'Cancellation state was persisted.';
+          ? 'A new READY retry attempt was created; the failed or cancelled source remains unchanged.'
+          : action === 'reproduce'
+            ? 'A new exact READY reproduction was created from the same immutable specification. It has not been queued.'
+            : 'Cancellation state was persisted.';
       this.messageKind = 'success';
       await this.refresh({ quiet: true });
     } catch (error) {
@@ -198,7 +201,7 @@ class SimulationJobQueue extends HTMLElement {
 
   renderActions(job) {
     if (!job) return '';
-    const actions = [];
+    const actions = [['reproduce', 'Reproduce exact run']];
     if (job.status === 'READY') actions.push(['enqueue', 'Queue for worker']);
     if (job.cancellable) actions.push(['cancel', job.status === 'READY' || job.status === 'QUEUED' ? 'Cancel' : 'Cancel safely']);
     if (job.retryable) actions.push(['retry', 'Create retry']);
@@ -207,7 +210,7 @@ class SimulationJobQueue extends HTMLElement {
     return [
       `<a class="action-link secondary" href="${simulationEscape(manifestPath)}" download="${simulationEscape(manifestName)}">Download run manifest</a>`,
       ...actions.map(([action, label]) => (
-        `<button type="button" data-job-action="${action}" data-job-id="${simulationEscape(job.id)}" class="${action === 'cancel' ? 'danger' : ''}">${simulationEscape(label)}</button>`
+        `<button type="button" data-job-action="${action}" data-job-id="${simulationEscape(job.id)}" class="${action === 'cancel' ? 'danger' : action === 'reproduce' ? 'secondary' : ''}">${simulationEscape(label)}</button>`
       )),
     ].join('');
   }
@@ -223,6 +226,8 @@ class SimulationJobQueue extends HTMLElement {
         <dl>
           <dt>Immutable specification</dt><dd><code>${simulationEscape(job.specification_key)}</code></dd>
           <dt>Retry of</dt><dd>${job.retry_of ? `<code>${simulationEscape(job.retry_of)}</code>` : '—'}</dd>
+          <dt>Reproduced from</dt><dd>${job.reproduced_from ? `<code>${simulationEscape(job.reproduced_from)}</code>` : '—'}</dd>
+          <dt>Exact reproductions</dt><dd>${(job.reproductions || []).length ? job.reproductions.map((id) => `<code>${simulationEscape(id)}</code>`).join('<br>') : '—'}</dd>
           <dt>Created</dt><dd>${simulationEscape(simulationTime(job.created_at))}</dd>
           <dt>Queued</dt><dd>${simulationEscape(simulationTime(job.queued_at))}</dd>
           <dt>Started</dt><dd>${simulationEscape(simulationTime(job.started_at))}</dd>
@@ -250,7 +255,7 @@ class SimulationJobQueue extends HTMLElement {
         <ol class="events">
           ${(job.events || []).slice(-8).reverse().map((event) => `<li><time>${simulationEscape(simulationTime(event.timestamp))}</time><strong>${simulationEscape(event.type)}</strong><span>${simulationEscape(event.message)}</span></li>`).join('') || '<li>No events</li>'}
         </ol>
-        <p class="honesty"><strong>Execution is not implied by queue state.</strong> A separate persistent worker must atomically claim this job before any WPS or WRF process may start.</p>
+        <p class="honesty"><strong>Exact reproduction is not execution.</strong> It creates a new READY record only when the same immutable specification and verified ERA5 input remain available. A separate worker must still be queued explicitly.</p>
       </article>
     `;
   }

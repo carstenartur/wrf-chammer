@@ -12,8 +12,11 @@ on:
       - 'workbench/pipeline_specification_service.py'
       - 'workbench/server/application.py'
       - 'workbench/server/_application_base.py'
+      - 'workbench/server/_application_event_base.py'
       - 'workbench/server/tests/test_simulation_job_api.py'
       - 'workbench/server/tests/test_simulation_job_queue_ui.js'
+      - 'workbench/server/tests/test_simulation_reproduction.py'
+      - 'workbench/server/tests/test_simulation_reproduction_api.py'
       - 'workbench/server/tests/test_simulation_run_manifest.py'
       - 'workbench/server/tests/test_simulation_run_manifest_api.py'
       - 'workbench/server/tests/test_simulation_store.py'
@@ -25,6 +28,7 @@ on:
       - 'workbench/ui/public/simulation-job-queue.js'
       - 'doc/PERSISTENT_SIMULATION_API_UI.md'
       - 'doc/SIMULATION_RUN_MANIFEST.md'
+      - 'doc/EXACT_SIMULATION_REPRODUCTION.md'
       - '.github/workflows/simulation-api-tests.yml'
   push:
     branches: [master, develop]
@@ -37,8 +41,11 @@ on:
       - 'workbench/pipeline_specification_service.py'
       - 'workbench/server/application.py'
       - 'workbench/server/_application_base.py'
+      - 'workbench/server/_application_event_base.py'
       - 'workbench/server/tests/test_simulation_job_api.py'
       - 'workbench/server/tests/test_simulation_job_queue_ui.js'
+      - 'workbench/server/tests/test_simulation_reproduction.py'
+      - 'workbench/server/tests/test_simulation_reproduction_api.py'
       - 'workbench/server/tests/test_simulation_run_manifest.py'
       - 'workbench/server/tests/test_simulation_run_manifest_api.py'
       - 'workbench/server/tests/test_simulation_store.py'
@@ -50,6 +57,7 @@ on:
       - 'workbench/ui/public/simulation-job-queue.js'
       - 'doc/PERSISTENT_SIMULATION_API_UI.md'
       - 'doc/SIMULATION_RUN_MANIFEST.md'
+      - 'doc/EXACT_SIMULATION_REPRODUCTION.md'
       - '.github/workflows/simulation-api-tests.yml'
   workflow_dispatch:
 
@@ -79,8 +87,11 @@ jobs:
             workbench/_simulation_store_sqlite.py \
             workbench/simulation_run_manifest.py \
             workbench/server/_application_base.py \
+            workbench/server/_application_event_base.py \
             workbench/server/application.py \
             workbench/server/tests/test_simulation_job_api.py \
+            workbench/server/tests/test_simulation_reproduction.py \
+            workbench/server/tests/test_simulation_reproduction_api.py \
             workbench/server/tests/test_simulation_run_manifest.py \
             workbench/server/tests/test_simulation_run_manifest_api.py
           node --check workbench/web/simulation-job-queue.js
@@ -106,6 +117,22 @@ jobs:
             }
           cat "${RUNNER_TEMP}/simulation-store-tests.log"
           cat "${RUNNER_TEMP}/simulation-validation-tests.log"
+
+      - name: Run exact reproduction tests
+        shell: bash
+        run: |
+          python3 workbench/server/tests/test_simulation_reproduction.py -v \
+            > "${RUNNER_TEMP}/simulation-reproduction-tests.log" 2>&1 || {
+              cat "${RUNNER_TEMP}/simulation-reproduction-tests.log"
+              exit 1
+            }
+          python3 workbench/server/tests/test_simulation_reproduction_api.py \
+            > "${RUNNER_TEMP}/simulation-reproduction-api-tests.log" 2>&1 || {
+              cat "${RUNNER_TEMP}/simulation-reproduction-api-tests.log"
+              exit 1
+            }
+          cat "${RUNNER_TEMP}/simulation-reproduction-tests.log"
+          cat "${RUNNER_TEMP}/simulation-reproduction-api-tests.log"
 
       - name: Run versioned run-manifest tests
         shell: bash
