@@ -1,0 +1,22 @@
+{
+  "format": {
+    "name": "wrf-chammer-runtime-release",
+    "version": 1
+  },
+  "release": "example-unpublished",
+  "product_source_revision": "0000000000000000000000000000000000000000",
+  "images": {
+    "wps": {
+      "reference": "ghcr.io/carstenartur/wrf-chammer-wps:example-unpublished",
+      "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "wrf": {
+      "reference": "ghcr.io/carstenartur/wrf-chammer-wrf:example-unpublished",
+      "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "postprocessing": {
+      "reference": "ghcr.io/carstenartur/wrf-chammer-postprocessing:example-unpublished",
+      "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  }
+}
