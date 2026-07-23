@@ -30,6 +30,16 @@
     "migration/standalone-root/": "",
     "migration/runtime-source-baseline.json": "runtime/source-baseline.json"
   },
+  "remove_after_export": [
+    ".github/workflows/docker-build.yml",
+    ".github/workflows/docker-wps-build.yml",
+    ".github/workflows/wps-integration-test.yml",
+    ".github/workflows/heavy-workflow-trigger-policy-tests.yml",
+    ".github/workflows/standalone-repository-extraction-tests.yml",
+    "ci/verify-heavy-workflow-triggers.py",
+    "ci/verify-standalone-product-extraction.py",
+    "ci/test_standalone_repository_extraction.py"
+  ],
   "allowed_export_roots": [
     ".github",
     ".gitignore",
@@ -82,16 +92,6 @@
       "path": "workbench/cli.py",
       "needle": "docker\", \"build\", \"-f\", \"Dockerfile",
       "reason": "The current developer command still builds WRF and WPS from the full fork checkout. The standalone user path must pull digest-pinned release images instead."
-    },
-    {
-      "path": ".github/workflows/docker-build.yml",
-      "needle": "docker build --progress=plain --tag wrf-reproducible .",
-      "reason": "The current WRF image workflow builds from the complete fork tree and must become a source-locked runtime release workflow before moving to the product repository."
-    },
-    {
-      "path": ".github/workflows/docker-wps-build.yml",
-      "needle": "docker build -f Dockerfile.wps",
-      "reason": "The standalone product repository intentionally does not carry the WRF source tree or Dockerfile.wps; WPS must be published from a source/runtime repository."
     }
   ]
 }
