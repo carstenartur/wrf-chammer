@@ -45,9 +45,15 @@ def main() -> int:
     ):
         require(text, image)
 
+    for remote in ("wrf_remote=", "wps_remote=", "postprocessing_remote="):
+        require(text, remote)
+    require(text, 'for remote_image in "${wrf_remote}" "${wps_remote}" "${postprocessing_remote}"')
     require(text, "docker manifest inspect")
     require(text, "Refusing to overwrite existing immutable runtime tag")
     require(text, "docker push")
+    if text.index("for remote_image in") > text.index('docker push "${remote_image}"'):
+        raise AssertionError("All immutable tags must be preflighted before the first push")
+
     require(text, ".RepoDigests")
     require(text, "^sha256:[0-9a-f]{64}$")
     require(text, "release-manifest.json")
