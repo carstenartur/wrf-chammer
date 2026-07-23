@@ -91,6 +91,28 @@ def _resolved_revision(source: Path, requested: str | None) -> str:
     return _git(source, "rev-parse", "--verify", f"{revision}^{{commit}}")
 
 
+def _verify_revision_baseline(
+    source: Path, manifest: dict[str, Any], source_revision: str
+) -> str:
+    baseline = str(manifest.get("minimum_source_revision") or "")
+    if len(baseline) != 40:
+        raise ExportError("minimum_source_revision must be a full Git SHA")
+    completed = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", baseline, source_revision],
+        cwd=source,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise ExportError(
+            f"Requested export revision {source_revision} predates or diverges from "
+            f"migration baseline {baseline}"
+        )
+    return baseline
+
+
 def _migration_commit(root: Path, message: str) -> None:
     _run(
         root,
@@ -115,6 +137,18 @@ def _remove_fork_only_paths(root: Path, manifest: dict[str, Any]) -> list[str]:
     _run(root, ["git", "rm", "-r", "--ignore-unmatch", "--", *existing])
     _migration_commit(root, "Remove fork-only build and migration workflows")
     return existing
+
+
+def _assert_safe_destination(source: Path, destination: Path) -> None:
+    if (
+        destination == source
+        or source in destination.parents
+        or destination in source.parents
+    ):
+        raise ExportError(
+            "Destination must be disjoint from the source checkout; refusing a path "
+            "that is the source, contains it, or is contained by it"
+        )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -150,6 +184,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         manifest = _load_manifest(manifest_path)
         source_revision = _resolved_revision(source, args.revision)
+        baseline_revision = _verify_revision_baseline(
+            source, manifest, source_revision
+        )
         verifier = source / "ci" / "verify-standalone-product-extraction.py"
         _run(
             source,
@@ -167,6 +204,7 @@ def main(argv: list[str] | None = None) -> int:
         plan = {
             "source": str(source),
             "source_revision": source_revision,
+            "minimum_source_revision": baseline_revision,
             "destination": str(destination),
             "suggested_repository": manifest.get("suggested_repository"),
             "filter_repo_command": _filter_repo_command(
@@ -180,14 +218,11 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(plan, indent=2, sort_keys=True))
             return 0
 
+        _assert_safe_destination(source, destination)
         if destination.exists():
             if not args.force:
                 raise ExportError(
                     f"Destination already exists: {destination}. Use --force to replace it."
-                )
-            if destination == source or source in destination.parents:
-                raise ExportError(
-                    "Refusing to delete the source checkout or a directory inside it"
                 )
             shutil.rmtree(destination)
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -236,8 +271,9 @@ def main(argv: list[str] | None = None) -> int:
             {
                 "source_repository": manifest.get("source_repository"),
                 "source_revision_before_filter": source_revision,
+                "minimum_source_revision": baseline_revision,
                 "suggested_repository": manifest.get("suggested_repository"),
-                "export_revision": _git(destination, "rev-parse", "HEAD"),
+                "export_content_revision": _git(destination, "rev-parse", "HEAD"),
                 "fork_only_paths_removed": removed_paths,
             }
         )
