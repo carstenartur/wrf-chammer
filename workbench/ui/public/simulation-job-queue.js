@@ -202,9 +202,14 @@ class SimulationJobQueue extends HTMLElement {
     if (job.status === 'READY') actions.push(['enqueue', 'Queue for worker']);
     if (job.cancellable) actions.push(['cancel', job.status === 'READY' || job.status === 'QUEUED' ? 'Cancel' : 'Cancel safely']);
     if (job.retryable) actions.push(['retry', 'Create retry']);
-    return actions.map(([action, label]) => (
-      `<button type="button" data-job-action="${action}" data-job-id="${simulationEscape(job.id)}" class="${action === 'cancel' ? 'danger' : ''}">${simulationEscape(label)}</button>`
-    )).join('');
+    const manifestPath = `/api/simulations/${encodeURIComponent(job.id)}/run-manifest`;
+    const manifestName = `wrf-chammer-run-manifest-${job.id}.json`;
+    return [
+      `<a class="action-link secondary" href="${simulationEscape(manifestPath)}" download="${simulationEscape(manifestName)}">Download run manifest</a>`,
+      ...actions.map(([action, label]) => (
+        `<button type="button" data-job-action="${action}" data-job-id="${simulationEscape(job.id)}" class="${action === 'cancel' ? 'danger' : ''}">${simulationEscape(label)}</button>`
+      )),
+    ].join('');
   }
 
   renderJobDetails(job) {
@@ -259,8 +264,9 @@ class SimulationJobQueue extends HTMLElement {
         header,.details-heading,.actions { display:flex; justify-content:space-between; gap:1rem; align-items:flex-start; flex-wrap:wrap; }
         .eyebrow { margin:0 0 .3rem; color:#315b85; font-size:.76rem; font-weight:750; text-transform:uppercase; letter-spacing:.04em; }
         h2,h3,h4,p { margin-top:0; } h3 { font-size:.95rem; overflow-wrap:anywhere; margin:.5rem 0; }
-        button { border:0; border-radius:9px; padding:.65rem .9rem; background:#1d5f9d; color:white; font:inherit; font-weight:700; cursor:pointer; }
-        button.secondary { background:white; color:#1d5f9d; border:1px solid #9ebddd; } button.danger { background:#9a3636; } button:disabled { opacity:.48; cursor:not-allowed; }
+        button,.action-link { border:0; border-radius:9px; padding:.65rem .9rem; background:#1d5f9d; color:white; font:inherit; font-weight:700; cursor:pointer; }
+        .action-link { display:inline-block; box-sizing:border-box; text-decoration:none; }
+        button.secondary,.action-link.secondary { background:white; color:#1d5f9d; border:1px solid #9ebddd; } button.danger { background:#9a3636; } button:disabled { opacity:.48; cursor:not-allowed; }
         .create { display:grid; grid-template-columns:minmax(260px,1fr) max-content; gap:.75rem; align-items:end; margin:1rem 0; }
         label { display:grid; gap:.3rem; color:#40566d; font-weight:650; } select { min-width:0; border:1px solid #aebfd0; border-radius:8px; padding:.65rem; background:white; font:inherit; }
         .message { min-height:1.3rem; color:#40566d; } .message.success { color:#17663b; font-weight:650; } .message.warning { color:#845700; font-weight:650; } .message.error { color:#982424; font-weight:650; }

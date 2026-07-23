@@ -77,13 +77,25 @@ assert.ok(Control, 'custom element was not registered');
   assert.equal(control.selectedJobDetail.events[0].type, 'job_created');
   assert.ok(calls.includes('/api/simulations/job-1'));
   assert.match(control.shadowRoot.innerHTML, /created first/);
+  assert.match(
+    control.shadowRoot.innerHTML,
+    /href="\/api\/simulations\/job-1\/run-manifest"/,
+  );
+  assert.match(
+    control.shadowRoot.innerHTML,
+    /download="wrf-chammer-run-manifest-job-1\.json"/,
+  );
 
   await control.selectJob('job-2');
   assert.equal(control.selectedJobDetail.id, 'job-2');
   assert.equal(control.selectedJobDetail.events[0].type, 'job_cancelled');
   assert.ok(calls.includes('/api/simulations/job-2'));
   assert.match(control.shadowRoot.innerHTML, /cancelled second/);
-  console.log('Persistent simulation queue detail loading passed');
+  assert.match(
+    control.shadowRoot.innerHTML,
+    /href="\/api\/simulations\/job-2\/run-manifest"/,
+  );
+  console.log('Persistent simulation queue detail loading and manifest export passed');
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;
