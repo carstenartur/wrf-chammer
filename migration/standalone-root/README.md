@@ -81,6 +81,12 @@ WRF Chammer Workbench is an independent product built around the Weather Researc
 
 During migration, runtime images may still be built from a pinned commit of the existing `carstenartur/wrf-chammer` fork. A separate upstream-diff audit determines whether a permanent minimal WRF fork is required or whether an official pinned WRF revision is sufficient.
 
-## License
+## Licensing
 
-The extracted repository initially retains the source license file for continuity. Before the first standalone release, the license and third-party notices must be reviewed for the product code and all packaged runtime components.
+The WRF public-domain notice and trademark statement are preserved separately at
+`THIRD_PARTY_NOTICES/WRF-LICENSE.txt`. They describe WRF, not automatically the
+standalone Workbench product code.
+
+No product license is inferred from the WRF notice. A standalone product license and
+complete third-party notices must be selected and reviewed before the first public
+standalone release.
