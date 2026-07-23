@@ -1,0 +1,129 @@
+name: Standalone Repository Extraction Tests
+
+on:
+  pull_request:
+    paths:
+      - 'migration/**'
+      - 'ci/verify-standalone-product-extraction.py'
+      - 'ci/test_standalone_repository_extraction.py'
+      - 'doc/STANDALONE_REPOSITORY_MIGRATION.md'
+      - '.github/workflows/standalone-repository-extraction-tests.yml'
+  push:
+    branches: [master, develop]
+    paths:
+      - 'migration/**'
+      - 'ci/verify-standalone-product-extraction.py'
+      - 'ci/test_standalone_repository_extraction.py'
+      - 'doc/STANDALONE_REPOSITORY_MIGRATION.md'
+      - '.github/workflows/standalone-repository-extraction-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: standalone-repository-extraction-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  extraction-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout complete history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify Python syntax
+        run: |
+          python3 -m py_compile \
+            migration/export-standalone-product.py \
+            migration/audit-wrf-runtime-diff.py \
+            ci/verify-standalone-product-extraction.py \
+            ci/test_standalone_repository_extraction.py
+
+      - name: Verify extraction manifest and plan
+        run: python3 ci/test_standalone_repository_extraction.py
+
+      - name: Install history filtering tool
+        run: |
+          python3 -m pip install --user --disable-pip-version-check git-filter-repo
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Export real standalone repository with history
+        run: |
+          python3 migration/export-standalone-product.py \
+            "${RUNNER_TEMP}/wrf-chammer-workbench" \
+            --source . \
+            --allow-known-couplings
+
+      - name: Verify exported product checkout
+        working-directory: ${{ runner.temp }}/wrf-chammer-workbench
+        run: |
+          test -f README.md
+          test -f THIRD_PARTY_NOTICES/WRF-LICENSE.txt
+          test ! -e LICENSE
+          test ! -e LICENSE.txt
+          grep -q 'WRF was developed at the National Center for Atmospheric Research' \
+            THIRD_PARTY_NOTICES/WRF-LICENSE.txt
+          grep -q 'No product license is inferred' README.md
+          test -f runtime/source-baseline.json
+          test -f workbench/cli.py
+          test -f workbench/server/application.py
+          test -d visualization
+          test ! -e phys
+          test ! -e dyn_em
+          test ! -e main
+          test ! -e .github/workflows/docker-build.yml
+          test ! -e .github/workflows/docker-wps-build.yml
+          test ! -e .github/workflows/standalone-repository-extraction-tests.yml
+          python3 -m py_compile \
+            wrf-chammer \
+            workbench/cli.py \
+            workbench/server/application.py \
+            workbench/simulation_store.py
+          python3 wrf-chammer doctor --skip-images --json \
+            > "${RUNNER_TEMP}/standalone-doctor.json"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = json.loads(Path('migration-report.json').read_text(encoding='utf-8'))
+          assert report['source_repository'] == 'carstenartur/wrf-chammer'
+          assert len(report['source_revision_before_filter']) == 40
+          assert report['tracked_file_count'] > 50
+          assert report['forbidden_roots'] == []
+          assert report['known_runtime_couplings']
+          assert report['ready_for_standalone_release'] is False
+          assert '.github/workflows/docker-build.yml' in report['fork_only_paths_removed']
+          assert '.github/workflows/standalone-repository-extraction-tests.yml' in report['fork_only_paths_removed']
+
+          doctor_path = Path(os.environ['RUNNER_TEMP']) / 'standalone-doctor.json'
+          doctor = json.loads(doctor_path.read_text(encoding='utf-8'))
+          assert doctor['status'] in {'ready', 'warning'}
+          assert doctor['checks']
+          PY
+          test "$(git rev-list --count HEAD)" -gt 20
+          test "$(git rev-list --count HEAD -- workbench/server/application.py)" -gt 1
+          test -n "$(git log -1 --format=%H -- workbench/cli.py)"
+          git fsck --no-dangling
+
+      - name: Upload source-boundary report
+        if: always()
+        run: |
+          python3 ci/verify-standalone-product-extraction.py \
+            --source-root . \
+            --json > "${RUNNER_TEMP}/standalone-source-boundary.json"
+
+      - name: Preserve migration diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: standalone-repository-extraction-report
+          path: |
+            ${{ runner.temp }}/standalone-source-boundary.json
+            ${{ runner.temp }}/standalone-doctor.json
+            ${{ runner.temp }}/wrf-chammer-workbench/migration-report.json
+          if-no-files-found: error

@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "product_name": "WRF Chammer Workbench",
+  "suggested_repository": "carstenartur/wrf-chammer-workbench",
+  "source_repository": "carstenartur/wrf-chammer",
+  "minimum_source_revision": "f18e0f6068bbedb2b29a849c38087b244a5aef0b",
+  "export_revision_policy": "Use the explicit --revision argument or the current source HEAD. The resolved full SHA is written to migration-report.json.",
+  "runtime_source_baseline": "migration/runtime-source-baseline.json",
+  "history_preserving_tool": "git-filter-repo",
+  "include_prefixes": [
+    "workbench/",
+    "visualization/",
+    "doc/",
+    "ci/",
+    ".github/workflows/",
+    "tests/era5-mini/",
+    "migration/standalone-root/"
+  ],
+  "include_files": [
+    "wrf-chammer",
+    ".gitignore",
+    "LICENSE.txt",
+    "Dockerfile.backend",
+    "Dockerfile.era5",
+    "Dockerfile.postproc",
+    "Dockerfile.postprocessing",
+    "migration/runtime-source-baseline.json"
+  ],
+  "path_renames": {
+    "migration/standalone-root/": "",
+    "migration/runtime-source-baseline.json": "runtime/source-baseline.json",
+    "LICENSE.txt": "THIRD_PARTY_NOTICES/WRF-LICENSE.txt"
+  },
+  "remove_after_export": [
+    ".github/workflows/docker-build.yml",
+    ".github/workflows/docker-wps-build.yml",
+    ".github/workflows/wps-integration-test.yml",
+    ".github/workflows/heavy-workflow-trigger-policy-tests.yml",
+    ".github/workflows/standalone-repository-extraction-tests.yml",
+    "ci/verify-heavy-workflow-triggers.py",
+    "ci/verify-standalone-product-extraction.py",
+    "ci/test_standalone_repository_extraction.py"
+  ],
+  "allowed_export_roots": [
+    ".github",
+    ".gitignore",
+    "CHANGELOG.md",
+    "Dockerfile.backend",
+    "Dockerfile.era5",
+    "Dockerfile.postproc",
+    "Dockerfile.postprocessing",
+    "README.md",
+    "SECURITY.md",
+    "THIRD_PARTY_NOTICES",
+    "ci",
+    "doc",
+    "migration-report.json",
+    "runtime",
+    "tests",
+    "visualization",
+    "workbench",
+    "wrf-chammer"
+  ],
+  "required_export_paths": [
+    "README.md",
+    "THIRD_PARTY_NOTICES/WRF-LICENSE.txt",
+    "runtime/source-baseline.json",
+    "wrf-chammer",
+    "workbench/cli.py",
+    "workbench/server/application.py",
+    "workbench/simulation_store.py",
+    "workbench/simulation_run_manifest.py",
+    "visualization",
+    "doc/INSTALLATION.md"
+  ],
+  "forbidden_export_roots": [
+    "arch",
+    "chem",
+    "configure",
+    "dyn_em",
+    "dyn_exp",
+    "external",
+    "frame",
+    "hydro",
+    "inc",
+    "main",
+    "phys",
+    "share",
+    "tools",
+    "var"
+  ],
+  "known_runtime_couplings": [
+    {
+      "path": "workbench/cli.py",
+      "needle": "docker\", \"build\", \"-f\", \"Dockerfile",
+      "reason": "The current developer command still builds WRF and WPS from the full fork checkout. The standalone user path must pull digest-pinned release images instead."
+    }
+  ]
+}
