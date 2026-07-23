@@ -50,10 +50,12 @@ def main() -> int:
     assert manifest["source_repository"] == "carstenartur/wrf-chammer"
     assert manifest["suggested_repository"].endswith("wrf-chammer-workbench")
     assert "README.md" in manifest["required_export_paths"]
+    assert "THIRD_PARTY_NOTICES/WRF-LICENSE.txt" in manifest["required_export_paths"]
     assert "runtime/source-baseline.json" in manifest["required_export_paths"]
     assert "phys" in manifest["forbidden_export_roots"]
     assert "workbench/" in manifest["include_prefixes"]
     assert "migration/standalone-root/" in manifest["path_renames"]
+    assert manifest["path_renames"]["LICENSE.txt"] == "THIRD_PARTY_NOTICES/WRF-LICENSE.txt"
     assert (
         manifest["path_renames"]["migration/runtime-source-baseline.json"]
         == "runtime/source-baseline.json"
@@ -103,6 +105,7 @@ def main() -> int:
     assert "--force" in command
     assert "workbench/" in command
     assert "migration/standalone-root/:" in command
+    assert "LICENSE.txt:THIRD_PARTY_NOTICES/WRF-LICENSE.txt" in command
     assert "migration/runtime-source-baseline.json:runtime/source-baseline.json" in command
     assert ".github/workflows/docker-build.yml" in plan["remove_after_export"]
     assert "ci/verify-standalone-product-extraction.py" in plan["remove_after_export"]
@@ -124,6 +127,8 @@ def main() -> int:
     assert readme_text.startswith("# WRF Chammer Workbench")
     assert "not the official WRF project" in readme_text
     assert "real Xaver" in readme_text
+    assert "THIRD_PARTY_NOTICES/WRF-LICENSE.txt" in readme_text
+    assert "No product license is inferred" in readme_text
 
     print("Standalone repository extraction contract tests passed")
     return 0
