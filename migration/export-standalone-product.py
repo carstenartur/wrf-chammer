@@ -203,7 +203,10 @@ def main(argv: list[str] | None = None) -> int:
                 str(destination),
             ],
         )
-        _run(destination, ["git", "checkout", "--detach", source_revision])
+        _run(
+            destination,
+            ["git", "checkout", "--force", "-B", "standalone-export", source_revision],
+        )
         _run(
             destination,
             _filter_repo_command(manifest, require_installed=True),
