@@ -1,0 +1,62 @@
+name: Standalone Repository Extraction Tests
+
+on:
+  pull_request:
+    paths:
+      - 'migration/**'
+      - 'ci/verify-standalone-product-extraction.py'
+      - 'ci/test_standalone_repository_extraction.py'
+      - 'doc/STANDALONE_REPOSITORY_MIGRATION.md'
+      - '.github/workflows/standalone-repository-extraction-tests.yml'
+  push:
+    branches: [master, develop]
+    paths:
+      - 'migration/**'
+      - 'ci/verify-standalone-product-extraction.py'
+      - 'ci/test_standalone_repository_extraction.py'
+      - 'doc/STANDALONE_REPOSITORY_MIGRATION.md'
+      - '.github/workflows/standalone-repository-extraction-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: standalone-repository-extraction-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  extraction-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout complete history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify Python syntax
+        run: |
+          python3 -m py_compile \
+            migration/export-standalone-product.py \
+            migration/audit-wrf-runtime-diff.py \
+            ci/verify-standalone-product-extraction.py \
+            ci/test_standalone_repository_extraction.py
+
+      - name: Verify extraction manifest and plan
+        run: python3 ci/test_standalone_repository_extraction.py
+
+      - name: Upload source-boundary report
+        if: always()
+        run: |
+          python3 ci/verify-standalone-product-extraction.py \
+            --source-root . \
+            --json > "${RUNNER_TEMP}/standalone-source-boundary.json"
+
+      - name: Preserve migration diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: standalone-repository-extraction-report
+          path: ${{ runner.temp }}/standalone-source-boundary.json
+          if-no-files-found: error
