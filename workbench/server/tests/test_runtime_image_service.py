@@ -12,6 +12,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from workbench.era5_service import Era5DataService
+from workbench.pipeline_specification_service import PipelineSpecificationService
 from workbench.runtime_image_service import (
     COMPONENTS,
     RuntimeImageError,
@@ -91,7 +93,6 @@ class RuntimeImageServiceTests(unittest.TestCase):
                     return subprocess.CompletedProcess(command, 0, "", "")
                 if command[1:3] == ["image", "inspect"]:
                     selector = command[3]
-                    digest = selector.rsplit("@", 1)[1]
                     return subprocess.CompletedProcess(
                         command,
                         0,
@@ -127,6 +128,21 @@ class RuntimeImageServiceTests(unittest.TestCase):
                 environment["WRF_CHAMMER_WRF_RUNTIME_REFERENCE"].endswith(
                     "@" + DIGESTS["wrf"]
                 )
+            )
+
+            for component in COMPONENTS:
+                prefix = f"WRF_CHAMMER_{component.upper()}_RUNTIME"
+                os.environ.pop(f"{prefix}_REFERENCE", None)
+                os.environ.pop(f"{prefix}_IDENTITY", None)
+            os.environ.pop("WRF_CHAMMER_SOURCE_REVISION", None)
+            data_service = Era5DataService(root, root / "era5-cache")
+            pipeline = PipelineSpecificationService(root, data_service)
+            readiness = pipeline.readiness()
+            self.assertTrue(readiness["ready"])
+            self.assertEqual(SOURCE_REVISION, readiness["source_revision"])
+            self.assertEqual(
+                DIGESTS["postprocessing"],
+                readiness["runtime"]["postprocessing"]["identity"],
             )
 
             tampered = copy.deepcopy(activation)
