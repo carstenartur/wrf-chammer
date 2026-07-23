@@ -91,6 +91,32 @@ def _resolved_revision(source: Path, requested: str | None) -> str:
     return _git(source, "rev-parse", "--verify", f"{revision}^{{commit}}")
 
 
+def _migration_commit(root: Path, message: str) -> None:
+    _run(
+        root,
+        [
+            "git",
+            "-c",
+            "user.name=WRF Chammer Migration",
+            "-c",
+            "user.email=wrf-chammer-migration@users.noreply.github.com",
+            "commit",
+            "-m",
+            message,
+        ],
+    )
+
+
+def _remove_fork_only_paths(root: Path, manifest: dict[str, Any]) -> list[str]:
+    requested = [str(value) for value in manifest.get("remove_after_export", [])]
+    existing = [value for value in requested if (root / value).exists()]
+    if not existing:
+        return []
+    _run(root, ["git", "rm", "-r", "--ignore-unmatch", "--", *existing])
+    _migration_commit(root, "Remove fork-only build and migration workflows")
+    return existing
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Export the Workbench product paths into a standalone Git repository"
@@ -135,6 +161,7 @@ def main(argv: list[str] | None = None) -> int:
                 "--manifest",
                 str(manifest_path),
             ],
+            capture=True,
         )
 
         plan = {
@@ -145,6 +172,7 @@ def main(argv: list[str] | None = None) -> int:
             "filter_repo_command": _filter_repo_command(
                 manifest, require_installed=False
             ),
+            "remove_after_export": manifest.get("remove_after_export", []),
             "target_url": args.target_url,
             "push": args.push,
         }
@@ -181,10 +209,11 @@ def main(argv: list[str] | None = None) -> int:
             _filter_repo_command(manifest, require_installed=True),
         )
         _run(destination, ["git", "branch", "-M", "main"])
+        removed_paths = _remove_fork_only_paths(destination, manifest)
 
         verification_command = [
             sys.executable,
-            str(destination / "ci" / "verify-standalone-product-extraction.py"),
+            str(verifier),
             "--source-root",
             str(source),
             "--manifest",
@@ -206,25 +235,14 @@ def main(argv: list[str] | None = None) -> int:
                 "source_revision_before_filter": source_revision,
                 "suggested_repository": manifest.get("suggested_repository"),
                 "export_revision": _git(destination, "rev-parse", "HEAD"),
+                "fork_only_paths_removed": removed_paths,
             }
         )
         report_path.write_text(
             json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
         _run(destination, ["git", "add", "migration-report.json"])
-        _run(
-            destination,
-            [
-                "git",
-                "-c",
-                "user.name=WRF Chammer Migration",
-                "-c",
-                "user.email=wrf-chammer-migration@users.noreply.github.com",
-                "commit",
-                "-m",
-                "Record standalone repository migration provenance",
-            ],
-        )
+        _migration_commit(destination, "Record standalone repository migration provenance")
 
         if args.target_url:
             current = subprocess.run(
