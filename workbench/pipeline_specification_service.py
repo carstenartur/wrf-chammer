@@ -19,6 +19,7 @@ from workbench.pipeline_specification import (
     build_run_specification_identity,
     sha256_value,
 )
+from workbench.runtime_image_service import RuntimeImageError, load_activation
 
 _SPEC_KEY_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -233,44 +234,69 @@ class PipelineSpecificationService:
             return []
         entries: list[dict[str, Any]] = []
         for directory in self.root.iterdir():
-            if not directory.is_dir() or directory.is_symlink() or not _SPEC_KEY_RE.fullmatch(directory.name):
+            if (
+                not directory.is_dir()
+                or directory.is_symlink()
+                or not _SPEC_KEY_RE.fullmatch(directory.name)
+            ):
                 continue
             try:
                 specification = self.get(directory.name)
             except PipelineSpecificationServiceError:
                 continue
             identity = specification["identity"]
-            entries.append({
-                "specification_key": specification["specification_key"],
-                "created_at": specification["created_at"],
-                "immutable": True,
-                "job_id": identity.get("job", {}).get("id"),
-                "profile": identity.get("profile", {}).get("id"),
-                "plan_key": identity.get("era5_input", {}).get("plan_key"),
-                "execution_started": bool(specification.get("execution_started")),
-            })
+            entries.append(
+                {
+                    "specification_key": specification["specification_key"],
+                    "created_at": specification["created_at"],
+                    "immutable": True,
+                    "job_id": identity.get("job", {}).get("id"),
+                    "profile": identity.get("profile", {}).get("id"),
+                    "plan_key": identity.get("era5_input", {}).get("plan_key"),
+                    "execution_started": bool(specification.get("execution_started")),
+                }
+            )
         entries.sort(key=lambda entry: str(entry.get("created_at", "")), reverse=True)
         return entries
+
+    def _active_runtime(self) -> tuple[dict[str, Any] | None, str | None]:
+        try:
+            return load_activation(self.repo_root, required=False), None
+        except RuntimeImageError as exc:
+            return None, exc.message
 
     def _runtime_identities(
         self, *, raise_on_missing: bool
     ) -> tuple[dict[str, Any], list[str]]:
         runtime: dict[str, Any] = {}
         errors: list[str] = []
+        active, activation_error = self._active_runtime()
+        if activation_error:
+            errors.append(activation_error)
         defaults = {
             "wps": "wps-reproducible:latest",
             "wrf": "wrf-reproducible:latest",
             "postprocessing": "wrf-chammer-postprocess:latest",
         }
+        active_images = active.get("images", {}) if isinstance(active, dict) else {}
         for name, default_reference in defaults.items():
             prefix = f"WRF_CHAMMER_{name.upper()}_RUNTIME"
-            reference = os.environ.get(f"{prefix}_REFERENCE", default_reference)
-            identity = os.environ.get(f"{prefix}_IDENTITY")
+            active_entry = active_images.get(name)
+            if not isinstance(active_entry, dict):
+                active_entry = {}
+            reference = os.environ.get(
+                f"{prefix}_REFERENCE",
+                str(active_entry.get("reference") or default_reference),
+            )
+            identity = os.environ.get(
+                f"{prefix}_IDENTITY",
+                str(active_entry.get("identity") or ""),
+            )
             if not identity:
                 errors.append(
-                    f"Set {prefix}_IDENTITY to a pinned sha256 runtime identity."
+                    f"Pull and activate a runtime release or set {prefix}_IDENTITY."
                 )
-            runtime[name] = {"reference": reference, "identity": identity}
+            runtime[name] = {"reference": reference, "identity": identity or None}
         if errors and raise_on_missing:
             raise PipelineSpecificationServiceError(
                 "runtime_identity_unavailable", " ".join(errors)
@@ -284,21 +310,30 @@ class PipelineSpecificationService:
         if configured:
             revision = configured.strip().lower()
         else:
-            try:
-                result = subprocess.run(
-                    ["git", "rev-parse", "HEAD"],
-                    cwd=self.repo_root,
-                    text=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.DEVNULL,
-                    timeout=5,
-                    check=True,
-                )
-                revision = result.stdout.strip().lower()
-            except (OSError, subprocess.SubprocessError):
-                revision = ""
+            active, _activation_error = self._active_runtime()
+            active_revision = (
+                active.get("product_source_revision")
+                if isinstance(active, dict)
+                else None
+            )
+            if isinstance(active_revision, str):
+                revision = active_revision.strip().lower()
+            else:
+                try:
+                    result = subprocess.run(
+                        ["git", "rev-parse", "HEAD"],
+                        cwd=self.repo_root,
+                        text=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.DEVNULL,
+                        timeout=5,
+                        check=True,
+                    )
+                    revision = result.stdout.strip().lower()
+                except (OSError, subprocess.SubprocessError):
+                    revision = ""
         if not re.fullmatch(r"[0-9a-f]{40,64}", revision):
-            message = "A pinned repository source revision is unavailable."
+            message = "A pinned product source revision is unavailable."
             if raise_on_missing:
                 raise PipelineSpecificationServiceError(
                     "source_revision_unavailable", message
