@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -35,7 +34,10 @@ def _run(
         detail = ""
         if capture:
             detail = (completed.stderr or completed.stdout or "").strip()
-        raise ExportError(f"Command failed ({completed.returncode}): {' '.join(command)}{': ' + detail if detail else ''}")
+        suffix = f": {detail}" if detail else ""
+        raise ExportError(
+            f"Command failed ({completed.returncode}): {' '.join(command)}{suffix}"
+        )
     return completed
 
 
@@ -53,30 +55,35 @@ def _load_manifest(path: Path) -> dict[str, Any]:
     return payload
 
 
-def _filter_repo_command(manifest: dict[str, Any]) -> list[str]:
+def _filter_repo_arguments(manifest: dict[str, Any]) -> list[str]:
+    arguments = ["--force"]
+    for value in manifest.get("include_prefixes", []):
+        arguments.extend(["--path", str(value)])
+    for value in manifest.get("include_files", []):
+        arguments.extend(["--path", str(value)])
+    for source, destination in manifest.get("path_renames", {}).items():
+        arguments.extend(["--path-rename", f"{source}:{destination}"])
+    return arguments
+
+
+def _filter_repo_command(manifest: dict[str, Any], *, require_installed: bool) -> list[str]:
+    arguments = _filter_repo_arguments(manifest)
     executable = shutil.which("git-filter-repo")
     if executable:
-        command = [executable, "--force"]
-    else:
-        probe = subprocess.run(
-            ["git", "filter-repo", "--help"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
+        return [executable, *arguments]
+    if not require_installed:
+        return ["git-filter-repo", *arguments]
+    probe = subprocess.run(
+        ["git", "filter-repo", "--help"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if probe.returncode != 0:
+        raise ExportError(
+            "git-filter-repo is required. Install it with your package manager or pipx."
         )
-        if probe.returncode != 0:
-            raise ExportError(
-                "git-filter-repo is required. Install it with your package manager or pipx."
-            )
-        command = ["git", "filter-repo", "--force"]
-
-    for value in manifest.get("include_prefixes", []):
-        command.extend(["--path", str(value)])
-    for value in manifest.get("include_files", []):
-        command.extend(["--path", str(value)])
-    for source, destination in manifest.get("path_renames", {}).items():
-        command.extend(["--path-rename", f"{source}:{destination}"])
-    return command
+    return ["git", "filter-repo", *arguments]
 
 
 def _resolved_revision(source: Path, requested: str | None) -> str:
@@ -96,6 +103,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--push", action="store_true")
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--allow-known-couplings", action="store_true")
+    parser.add_argument(
+        "--plan",
+        action="store_true",
+        help="Validate and print the exact export plan without cloning or rewriting history",
+    )
     return parser
 
 
@@ -125,13 +137,30 @@ def main(argv: list[str] | None = None) -> int:
             ],
         )
 
+        plan = {
+            "source": str(source),
+            "source_revision": source_revision,
+            "destination": str(destination),
+            "suggested_repository": manifest.get("suggested_repository"),
+            "filter_repo_command": _filter_repo_command(
+                manifest, require_installed=False
+            ),
+            "target_url": args.target_url,
+            "push": args.push,
+        }
+        if args.plan:
+            print(json.dumps(plan, indent=2, sort_keys=True))
+            return 0
+
         if destination.exists():
             if not args.force:
                 raise ExportError(
                     f"Destination already exists: {destination}. Use --force to replace it."
                 )
             if destination == source or source in destination.parents:
-                raise ExportError("Refusing to delete the source checkout or a directory inside it")
+                raise ExportError(
+                    "Refusing to delete the source checkout or a directory inside it"
+                )
             shutil.rmtree(destination)
         destination.parent.mkdir(parents=True, exist_ok=True)
 
@@ -147,7 +176,10 @@ def main(argv: list[str] | None = None) -> int:
             ],
         )
         _run(destination, ["git", "checkout", "--detach", source_revision])
-        _run(destination, _filter_repo_command(manifest))
+        _run(
+            destination,
+            _filter_repo_command(manifest, require_installed=True),
+        )
         _run(destination, ["git", "branch", "-M", "main"])
 
         verification_command = [
@@ -210,7 +242,9 @@ def main(argv: list[str] | None = None) -> int:
             if not args.target_url:
                 raise ExportError("--push requires --target-url")
             if args.allow_known_couplings:
-                raise ExportError("Refusing to push an export with known full-fork runtime couplings")
+                raise ExportError(
+                    "Refusing to push an export with known full-fork runtime couplings"
+                )
             _run(destination, ["git", "push", "--set-upstream", "origin", "main"])
 
         print(json.dumps(verification, indent=2, sort_keys=True))
