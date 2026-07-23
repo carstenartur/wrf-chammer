@@ -15,12 +15,17 @@ COMMON_EXCLUDED = (
     "doc/USER_GUIDE.md",
     "migration/export-standalone-product.py",
     "migration/standalone-product.json",
+    "runtime/release-manifest.schema.json",
+    "runtime/release-manifest.example.json",
+    "workbench/runtime_image_service.py",
     "workbench/simulation_run_manifest.py",
+    "workbench/server/tests/test_runtime_image_service.py",
     "workbench/server/tests/test_simulation_reproduction.py",
     "workbench/web/simulation-job-queue.js",
     "visualization/viewer/app.js",
     "ci/verify-heavy-workflow-triggers.py",
     ".github/workflows/simulation-api-tests.yml",
+    ".github/workflows/runtime-image-delivery-tests.yml",
     ".github/workflows/heavy-workflow-trigger-policy-tests.yml",
     ".github/workflows/standalone-repository-extraction-tests.yml",
     "Dockerfile.backend",
@@ -48,12 +53,7 @@ CONTRACTS = {
             ".github/workflows/docker-build.yml",
         ),
         "excluded": COMMON_EXCLUDED
-        + (
-            "Dockerfile.wps",
-            "Dockerfile.era5",
-            "wrf-chammer",
-            "ci/build-wps.sh",
-        ),
+        + ("Dockerfile.wps", "Dockerfile.era5", "wrf-chammer", "ci/build-wps.sh"),
     },
     ".github/workflows/docker-wps-build.yml": {
         "included": (
@@ -94,12 +94,7 @@ CONTRACTS = {
             ".github/workflows/wps-integration-test.yml",
         ),
         "excluded": COMMON_EXCLUDED
-        + (
-            "Dockerfile",
-            "wrf-chammer",
-            "workbench/validate.py",
-            "ci/build-wrf.sh",
-        ),
+        + ("Dockerfile", "wrf-chammer", "workbench/validate.py", "ci/build-wrf.sh"),
     },
 }
 
@@ -110,13 +105,11 @@ def _trigger_block(lines: list[str], trigger: str) -> list[str]:
         start = lines.index(marker) + 1
     except ValueError as exc:
         raise AssertionError(f"Missing {trigger} trigger") from exc
-    end = len(lines)
     for index in range(start, len(lines)):
         line = lines[index]
         if line.startswith("  ") and not line.startswith("    ") and line.strip():
-            end = index
-            break
-    return lines[start:end]
+            return lines[start:index]
+    return lines[start:]
 
 
 def _parse_path_scalar(raw: str) -> str:
@@ -133,21 +126,16 @@ def _parse_path_scalar(raw: str) -> str:
 
 def _paths_from_block(block: list[str], trigger: str) -> list[str]:
     if any(line.strip() == "paths-ignore:" for line in block):
-        raise AssertionError(
-            f"{trigger} still uses paths-ignore; dependency re-inclusion cannot be expressed safely"
-        )
+        raise AssertionError(f"{trigger} still uses paths-ignore")
     try:
-        start = next(
-            index for index, line in enumerate(block) if line.strip() == "paths:"
-        ) + 1
+        start = next(i for i, line in enumerate(block) if line.strip() == "paths:") + 1
     except StopIteration as exc:
         raise AssertionError(f"Missing paths list for {trigger}") from exc
     patterns: list[str] = []
     for line in block[start:]:
         if not line.strip():
             continue
-        indent = len(line) - len(line.lstrip(" "))
-        if indent <= 4:
+        if len(line) - len(line.lstrip(" ")) <= 4:
             break
         stripped = line.strip()
         if not stripped.startswith("- "):
@@ -181,51 +169,43 @@ def _glob_regex(pattern: str) -> re.Pattern[str]:
     return re.compile("".join(output))
 
 
-def _matches(pattern: str, path: str) -> bool:
-    return bool(_glob_regex(pattern).fullmatch(path))
-
-
 def _workflow_runs(patterns: Iterable[str], path: str) -> bool:
     selected = False
     for pattern in patterns:
         negative = pattern.startswith("!")
         candidate = pattern[1:] if negative else pattern
-        if _matches(candidate, path):
+        if _glob_regex(candidate).fullmatch(path):
             selected = not negative
     return selected
 
 
 def _verify_workflow(relative_path: str, contract: dict[str, tuple[str, ...]]) -> None:
-    path = REPO_ROOT / relative_path
-    text = path.read_text(encoding="utf-8")
+    text = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
     lines = text.splitlines()
-    pull_patterns = _paths_from_block(_trigger_block(lines, "pull_request"), "pull_request")
-    push_patterns = _paths_from_block(_trigger_block(lines, "push"), "push")
-    if pull_patterns != push_patterns:
+    pull = _paths_from_block(_trigger_block(lines, "pull_request"), "pull_request")
+    push = _paths_from_block(_trigger_block(lines, "push"), "push")
+    if pull != push:
         raise AssertionError(f"{relative_path}: pull and push path contracts differ")
-    if pull_patterns[0] != "**":
-        raise AssertionError(f"{relative_path}: first path must establish the inclusive baseline")
+    if pull[0] != "**":
+        raise AssertionError(f"{relative_path}: missing inclusive baseline")
     for required in (
         "!doc/**",
         "!migration/**",
+        "!runtime/**",
         "!workbench/**",
         "!visualization/**",
         "!ci/**",
         "!.github/workflows/**",
         "!Dockerfile*",
     ):
-        if required not in pull_patterns:
+        if required not in pull:
             raise AssertionError(f"{relative_path}: missing stable exclusion {required}")
     if "cancel-in-progress: true" not in text:
         raise AssertionError(f"{relative_path}: obsolete runs are not cancelled")
-
-    failures: list[str] = []
-    for candidate in contract["included"]:
-        if not _workflow_runs(pull_patterns, candidate):
-            failures.append(f"must trigger: {candidate}")
-    for candidate in contract["excluded"]:
-        if _workflow_runs(pull_patterns, candidate):
-            failures.append(f"must not trigger: {candidate}")
+    failures = [
+        *(f"must trigger: {path}" for path in contract["included"] if not _workflow_runs(pull, path)),
+        *(f"must not trigger: {path}" for path in contract["excluded"] if _workflow_runs(pull, path)),
+    ]
     if failures:
         raise AssertionError(f"{relative_path}: " + "; ".join(failures))
 
