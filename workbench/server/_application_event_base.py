@@ -190,6 +190,9 @@ class WorkbenchApplicationHandler(_BaseWorkbenchApplicationHandler):
                 elif action == "retry":
                     simulation = self._simulation_store().retry_job(job_id)
                     status = HTTPStatus.CREATED
+                elif action == "reproduce":
+                    simulation = self._simulation_store().reproduce_job(job_id)
+                    status = HTTPStatus.CREATED
                 else:
                     raise SimulationStoreError(
                         "job_not_found", "Simulation job not found."
@@ -210,6 +213,7 @@ class WorkbenchApplicationHandler(_BaseWorkbenchApplicationHandler):
         elif exc.code in {
             "invalid_simulation_request",
             "specification_integrity_error",
+            "reproduction_lineage_invalid",
             "invalid_artifact",
             "invalid_measurement",
             "invalid_progress",
