@@ -51,15 +51,19 @@ def main() -> int:
     assert manifest["suggested_repository"].endswith("wrf-chammer-workbench")
     assert "README.md" in manifest["required_export_paths"]
     assert "THIRD_PARTY_NOTICES/WRF-LICENSE.txt" in manifest["required_export_paths"]
+    assert "runtime/README.md" in manifest["required_export_paths"]
+    assert "runtime/release-manifest.schema.json" in manifest["required_export_paths"]
     assert "runtime/source-baseline.json" in manifest["required_export_paths"]
     assert "phys" in manifest["forbidden_export_roots"]
     assert "workbench/" in manifest["include_prefixes"]
+    assert "runtime/" in manifest["include_prefixes"]
     assert "migration/standalone-root/" in manifest["path_renames"]
     assert manifest["path_renames"]["LICENSE.txt"] == "THIRD_PARTY_NOTICES/WRF-LICENSE.txt"
     assert (
         manifest["path_renames"]["migration/runtime-source-baseline.json"]
         == "runtime/source-baseline.json"
     )
+    assert manifest["known_runtime_couplings"] == []
     assert ".github/workflows/docker-build.yml" in manifest["remove_after_export"]
     assert (
         ".github/workflows/standalone-repository-extraction-tests.yml"
@@ -79,11 +83,7 @@ def main() -> int:
     assert source_report["mode"] == "source"
     assert len(source_report["source_revision"]) == 40
     assert source_report["minimum_source_revision"] == manifest["minimum_source_revision"]
-    assert source_report["known_runtime_couplings"]
-    assert any(
-        item["path"] == "workbench/cli.py" and item["present"] == "true"
-        for item in source_report["known_runtime_couplings"]
-    )
+    assert source_report["known_runtime_couplings"] == []
 
     with tempfile.TemporaryDirectory(prefix="wrf-chammer-export-plan-") as temporary:
         destination = Path(temporary) / "standalone"
@@ -104,6 +104,7 @@ def main() -> int:
     command = plan["filter_repo_command"]
     assert "--force" in command
     assert "workbench/" in command
+    assert "runtime/" in command
     assert "migration/standalone-root/:" in command
     assert "LICENSE.txt:THIRD_PARTY_NOTICES/WRF-LICENSE.txt" in command
     assert "migration/runtime-source-baseline.json:runtime/source-baseline.json" in command

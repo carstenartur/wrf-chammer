@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/carstenartur/wrf-chammer-workbench/runtime/release-manifest.schema.json",
+  "title": "WRF Chammer runtime release manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "release", "product_source_revision", "images"],
+  "properties": {
+    "format": {
+      "const": {
+        "name": "wrf-chammer-runtime-release",
+        "version": 1
+      }
+    },
+    "release": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$"
+    },
+    "product_source_revision": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40,64}$"
+    },
+    "images": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wps", "wrf", "postprocessing"],
+      "properties": {
+        "wps": {"$ref": "#/$defs/image"},
+        "wrf": {"$ref": "#/$defs/image"},
+        "postprocessing": {"$ref": "#/$defs/image"}
+      }
+    }
+  },
+  "$defs": {
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reference", "digest"],
+      "properties": {
+        "reference": {
+          "type": "string",
+          "minLength": 1,
+          "not": {"pattern": "[@\\s]"}
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    }
+  }
+}

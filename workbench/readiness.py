@@ -7,6 +7,7 @@ before any optional Workbench dependencies or WRF/WPS runtime images exist.
 
 from __future__ import annotations
 
+import json
 import os
 import platform
 import shutil
@@ -16,6 +17,8 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Any
+
+from workbench.runtime_image_service import RuntimeImageError, load_activation
 
 GIB = 1024**3
 
@@ -53,7 +56,9 @@ def _memory_bytes() -> int | None:
     return None
 
 
-def _run(command: list[str], timeout: float = 8.0) -> subprocess.CompletedProcess[str] | None:
+def _run(
+    command: list[str], timeout: float = 8.0
+) -> subprocess.CompletedProcess[str] | None:
     try:
         return subprocess.run(
             command,
@@ -67,22 +72,56 @@ def _run(command: list[str], timeout: float = 8.0) -> subprocess.CompletedProces
         return None
 
 
-def _docker_image_check(image: str) -> dict[str, Any]:
-    completed = _run(["docker", "image", "inspect", image, "--format", "{{.Id}}"], timeout=8)
+def _docker_image_check(
+    reference: str, *, component: str, identity: str | None = None
+) -> dict[str, Any]:
+    completed = _run(["docker", "image", "inspect", reference], timeout=8)
     if completed and completed.returncode == 0:
-        image_id = completed.stdout.strip()
-        return _result(
-            f"image-{image.split(':', 1)[0]}",
-            "ready",
-            f"Runtime image {image} is available.",
-            details={"image": image, "image_id": image_id},
-        )
+        try:
+            value = json.loads(completed.stdout)
+            image = value[0]
+        except (json.JSONDecodeError, IndexError, TypeError):
+            image = None
+        if isinstance(image, dict):
+            image_id = image.get("Id")
+            repo_digests = image.get("RepoDigests")
+            matches = identity is None or image_id == identity or (
+                isinstance(repo_digests, list)
+                and any(
+                    isinstance(value, str) and value.endswith(f"@{identity}")
+                    for value in repo_digests
+                )
+            )
+            if matches:
+                return _result(
+                    f"image-{component}",
+                    "ready",
+                    f"Digest-pinned {component} runtime is available.",
+                    details={
+                        "component": component,
+                        "reference": reference,
+                        "identity": identity,
+                        "image_id": image_id,
+                    },
+                )
+            return _result(
+                f"image-{component}",
+                "error",
+                f"Local {component} runtime does not match the activated digest.",
+                "Run 'wrf-chammer images pull' with the installed release manifest.",
+                {
+                    "component": component,
+                    "reference": reference,
+                    "expected_identity": identity,
+                    "image_id": image_id,
+                },
+            )
     return _result(
-        f"image-{image.split(':', 1)[0]}",
+        f"image-{component}",
         "warning",
-        f"Runtime image {image} is not available locally.",
-        remediation="Run './wrf-chammer update-images' before starting a real WRF/WPS job.",
-        details={"image": image},
+        f"Runtime image {reference} is not available locally.",
+        "Run 'wrf-chammer images pull' with a published release manifest.",
+        {"component": component, "reference": reference, "identity": identity},
     )
 
 
@@ -109,7 +148,9 @@ def collect_readiness(repo_root: Path, include_images: bool = True) -> dict[str,
             "cpu",
             "ready" if cpu_count >= 2 else "warning",
             f"{cpu_count} CPU core(s) detected.",
-            None if cpu_count >= 2 else "Real simulations will be very slow with fewer than two CPU cores.",
+            None
+            if cpu_count >= 2
+            else "Real simulations will be very slow with fewer than two CPU cores.",
             {"logical_cores": cpu_count},
         )
     )
@@ -119,26 +160,42 @@ def collect_readiness(repo_root: Path, include_images: bool = True) -> dict[str,
         checks.append(_result("memory", "warning", "Total RAM could not be determined."))
     else:
         memory_gib = round(memory / GIB, 2)
-        status = "ready" if memory >= 8 * GIB else "warning" if memory >= 2 * GIB else "error"
+        status = (
+            "ready"
+            if memory >= 8 * GIB
+            else "warning"
+            if memory >= 2 * GIB
+            else "error"
+        )
         checks.append(
             _result(
                 "memory",
                 status,
                 f"{memory_gib} GiB RAM detected.",
-                None if status == "ready" else "Use a smaller domain/profile or run on a machine with at least 8 GiB RAM.",
+                None
+                if status == "ready"
+                else "Use a smaller domain/profile or run on a machine with at least 8 GiB RAM.",
                 {"bytes": memory, "gib": memory_gib},
             )
         )
 
     disk = shutil.disk_usage(root)
     free_gib = round(disk.free / GIB, 2)
-    disk_status = "ready" if disk.free >= 20 * GIB else "warning" if disk.free >= 5 * GIB else "error"
+    disk_status = (
+        "ready"
+        if disk.free >= 20 * GIB
+        else "warning"
+        if disk.free >= 5 * GIB
+        else "error"
+    )
     checks.append(
         _result(
             "disk",
             disk_status,
             f"{free_gib} GiB free in the repository filesystem.",
-            None if disk_status == "ready" else "Free disk space or choose a smaller simulation before downloading ERA5 data.",
+            None
+            if disk_status == "ready"
+            else "Free disk space or choose a smaller simulation before downloading ERA5 data.",
             {"free_bytes": disk.free, "free_gib": free_gib, "path": str(root)},
         )
     )
@@ -148,7 +205,14 @@ def collect_readiness(repo_root: Path, include_images: bool = True) -> dict[str,
         runs_dir.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(prefix="readiness-", dir=runs_dir, delete=True):
             pass
-        checks.append(_result("workspace", "ready", "Workbench run directory is writable.", details={"path": str(runs_dir)}))
+        checks.append(
+            _result(
+                "workspace",
+                "ready",
+                "Workbench run directory is writable.",
+                details={"path": str(runs_dir)},
+            )
+        )
     except OSError as exc:
         checks.append(
             _result(
@@ -172,7 +236,9 @@ def collect_readiness(repo_root: Path, include_images: bool = True) -> dict[str,
             )
         )
     else:
-        docker_info = _run([docker_path, "info", "--format", "{{.ServerVersion}}"], timeout=8)
+        docker_info = _run(
+            [docker_path, "info", "--format", "{{.ServerVersion}}"], timeout=8
+        )
         if docker_info and docker_info.returncode == 0:
             docker_ready = True
             checks.append(
@@ -180,7 +246,10 @@ def collect_readiness(repo_root: Path, include_images: bool = True) -> dict[str,
                     "docker",
                     "ready",
                     f"Docker daemon {docker_info.stdout.strip() or 'available'} is reachable.",
-                    details={"executable": docker_path, "server_version": docker_info.stdout.strip()},
+                    details={
+                        "executable": docker_path,
+                        "server_version": docker_info.stdout.strip(),
+                    },
                 )
             )
         else:
@@ -197,21 +266,88 @@ def collect_readiness(repo_root: Path, include_images: bool = True) -> dict[str,
                 )
             )
 
-    if include_images and docker_ready:
-        checks.append(_docker_image_check("wrf-reproducible:latest"))
-        checks.append(_docker_image_check("wps-reproducible:latest"))
+    activation = None
+    activation_error = None
+    try:
+        activation = load_activation(root, required=False)
+    except RuntimeImageError as exc:
+        activation_error = exc
+    if activation_error:
+        checks.append(
+            _result(
+                "runtime-release",
+                "error",
+                "The active runtime release record is invalid.",
+                "Pull the installed release manifest again.",
+                {"code": activation_error.code, "message": activation_error.message},
+            )
+        )
+    elif activation:
+        checks.append(
+            _result(
+                "runtime-release",
+                "ready",
+                f"Runtime release {activation.get('release')} is activated.",
+                details={
+                    "release": activation.get("release"),
+                    "manifest_sha256": activation.get("manifest_sha256"),
+                    "product_source_revision": activation.get(
+                        "product_source_revision"
+                    ),
+                },
+            )
+        )
+    else:
+        checks.append(
+            _result(
+                "runtime-release",
+                "warning",
+                "No digest-pinned runtime release is activated.",
+                "Run 'wrf-chammer images pull --manifest <release-manifest.json>'.",
+            )
+        )
 
-    cds_configured = bool(os.environ.get("CDSAPI_KEY")) or (Path.home() / ".cdsapirc").is_file()
+    if include_images and docker_ready:
+        if activation:
+            for component in ("wps", "wrf", "postprocessing"):
+                entry = activation["images"][component]
+                checks.append(
+                    _docker_image_check(
+                        entry["reference"],
+                        component=component,
+                        identity=entry["identity"],
+                    )
+                )
+        else:
+            checks.append(
+                _result(
+                    "runtime-images",
+                    "warning",
+                    "Runtime images cannot be checked without an activated release.",
+                    "Pull a digest-pinned release manifest first.",
+                )
+            )
+
+    cds_configured = bool(os.environ.get("CDSAPI_KEY")) or (
+        Path.home() / ".cdsapirc"
+    ).is_file()
     checks.append(
         _result(
             "era5-credentials",
             "ready" if cds_configured else "warning",
-            "ERA5/CDS credentials are configured." if cds_configured else "ERA5/CDS credentials were not found.",
-            None if cds_configured else "Create ~/.cdsapirc or configure CDSAPI_KEY before downloading real ERA5 data.",
+            "ERA5/CDS credentials are configured."
+            if cds_configured
+            else "ERA5/CDS credentials were not found.",
+            None
+            if cds_configured
+            else "Create ~/.cdsapirc or configure CDSAPI_KEY before downloading real ERA5 data.",
         )
     )
 
-    counts = {status: sum(1 for check in checks if check["status"] == status) for status in ("ready", "warning", "error")}
+    counts = {
+        status: sum(1 for check in checks if check["status"] == status)
+        for status in ("ready", "warning", "error")
+    }
     overall = "error" if counts["error"] else "warning" if counts["warning"] else "ready"
     return {
         "ok": counts["error"] == 0,

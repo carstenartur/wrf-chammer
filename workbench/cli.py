@@ -7,7 +7,6 @@ import argparse
 import json
 import os
 import signal
-import shutil
 import subprocess
 import sys
 import time
@@ -18,6 +17,13 @@ from pathlib import Path
 from typing import Any
 
 from workbench.readiness import collect_readiness
+from workbench.runtime_image_service import (
+    RuntimeImageError,
+    default_manifest_path,
+    load_activation,
+    pull_release,
+    runtime_environment,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RUNTIME_DIR = REPO_ROOT / "workbench-runs" / ".runtime"
@@ -46,7 +52,12 @@ def _pid_alive(pid: int) -> bool:
 def _server_state() -> dict[str, Any]:
     state = _read_state() or {}
     pid = int(state.get("pid") or 0)
-    return {**state, "pid": pid or None, "running": _pid_alive(pid), "log_file": str(LOG_FILE)}
+    return {
+        **state,
+        "pid": pid or None,
+        "running": _pid_alive(pid),
+        "log_file": str(LOG_FILE),
+    }
 
 
 def _health_url(host: str, port: int) -> str:
@@ -76,18 +87,52 @@ def _print(payload: Any, json_output: bool) -> None:
         print(json.dumps(payload, indent=2))
 
 
+def _runtime_failure(exc: RuntimeImageError, json_output: bool) -> int:
+    _print(
+        {
+            "status": "failed",
+            "error": {"code": exc.code, "message": exc.message},
+        },
+        json_output,
+    )
+    return 1
+
+
 def command_start(args: argparse.Namespace) -> int:
     current = _server_state()
     if current["running"]:
-        _print({"status": "already-running", "pid": current["pid"], "url": current.get("url"), "log_file": current["log_file"]}, args.json)
+        _print(
+            {
+                "status": "already-running",
+                "pid": current["pid"],
+                "url": current.get("url"),
+                "log_file": current["log_file"],
+            },
+            args.json,
+        )
         return 0
+
+    try:
+        active_runtime = load_activation(REPO_ROOT, required=False)
+        child_environment = {**os.environ, **runtime_environment(REPO_ROOT)}
+    except RuntimeImageError as exc:
+        return _runtime_failure(exc, args.json)
 
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     log_handle = LOG_FILE.open("a", encoding="utf-8")
-    command = [sys.executable, "-m", "workbench.server.application", "--host", args.host, "--port", str(args.port)]
+    command = [
+        sys.executable,
+        "-m",
+        "workbench.server.application",
+        "--host",
+        args.host,
+        "--port",
+        str(args.port),
+    ]
     process = subprocess.Popen(
         command,
         cwd=REPO_ROOT,
+        env=child_environment,
         stdin=subprocess.DEVNULL,
         stdout=log_handle,
         stderr=subprocess.STDOUT,
@@ -103,11 +148,23 @@ def command_start(args: argparse.Namespace) -> int:
         "url": f"http://{url_host}:{args.port}/",
         "command": command,
         "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "runtime_release": active_runtime.get("release") if active_runtime else None,
+        "runtime_manifest_sha256": (
+            active_runtime.get("manifest_sha256") if active_runtime else None
+        ),
     }
     STATE_FILE.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
 
     if not _wait_for_health(args.host, args.port, timeout=args.timeout):
-        _print({"status": "failed", "message": "Workbench did not become healthy before the timeout.", "pid": process.pid, "log_file": str(LOG_FILE)}, args.json)
+        _print(
+            {
+                "status": "failed",
+                "message": "Workbench did not become healthy before the timeout.",
+                "pid": process.pid,
+                "log_file": str(LOG_FILE),
+            },
+            args.json,
+        )
         return 1
 
     if args.open:
@@ -122,7 +179,6 @@ def command_stop(args: argparse.Namespace) -> int:
         STATE_FILE.unlink(missing_ok=True)
         _print({"status": "stopped", "message": "Workbench is not running."}, args.json)
         return 0
-
     pid = int(state["pid"])
     try:
         os.killpg(pid, signal.SIGTERM)
@@ -131,7 +187,6 @@ def command_stop(args: argparse.Namespace) -> int:
             os.kill(pid, signal.SIGTERM)
         except OSError:
             pass
-
     deadline = time.monotonic() + args.timeout
     while _pid_alive(pid) and time.monotonic() < deadline:
         time.sleep(0.1)
@@ -173,24 +228,45 @@ def command_logs(args: argparse.Namespace) -> int:
     return 0
 
 
-def command_update_images(_args: argparse.Namespace) -> int:
-    if not shutil.which("docker"):
-        print("Docker is required to build runtime images.", file=sys.stderr)
-        return 1
-    builds = [
-        (["docker", "build", "-f", "Dockerfile", "-t", "wrf-reproducible:latest", "."], "WRF"),
-        (["docker", "build", "-f", "Dockerfile.wps", "-t", "wps-reproducible:latest", "."], "WPS"),
-    ]
-    for command, label in builds:
-        print(f"Building {label} runtime image...", flush=True)
-        completed = subprocess.run(command, cwd=REPO_ROOT, check=False)
-        if completed.returncode != 0:
-            return completed.returncode
+def command_images_pull(args: argparse.Namespace) -> int:
+    manifest = args.manifest or default_manifest_path(REPO_ROOT)
+    try:
+        activation = pull_release(REPO_ROOT, manifest, engine_name=args.engine)
+    except RuntimeImageError as exc:
+        return _runtime_failure(exc, args.json)
+    _print({"status": "ready", "activation": activation}, args.json)
     return 0
 
 
+def command_images_status(args: argparse.Namespace) -> int:
+    try:
+        activation = load_activation(REPO_ROOT, required=False)
+    except RuntimeImageError as exc:
+        return _runtime_failure(exc, args.json)
+    payload = {
+        "status": "ready" if activation else "not-configured",
+        "activation": activation,
+        "default_manifest": str(default_manifest_path(REPO_ROOT)),
+    }
+    _print(payload, args.json)
+    return 0 if activation else 1
+
+
+def command_update_images(args: argparse.Namespace) -> int:
+    """Backward-compatible alias for pulling a digest-pinned release."""
+    return command_images_pull(args)
+
+
+def _add_image_pull_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--manifest", type=Path)
+    parser.add_argument("--engine")
+    parser.add_argument("--json", action="store_true")
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="wrf-chammer", description="Manage the local WRF Workbench")
+    parser = argparse.ArgumentParser(
+        prog="wrf-chammer", description="Manage the local WRF Workbench"
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     start = subparsers.add_parser("start", help="Start the local Workbench API and GUI")
@@ -212,7 +288,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor = subparsers.add_parser("doctor", help="Check readiness for local real-data simulations")
     doctor.add_argument("--json", action="store_true")
-    doctor.add_argument("--skip-images", action="store_true", help="Do not inspect local WRF/WPS images")
+    doctor.add_argument("--skip-images", action="store_true", help="Do not inspect runtime images")
     doctor.set_defaults(func=command_doctor)
 
     logs = subparsers.add_parser("logs", help="Show the locally managed server log")
@@ -220,8 +296,21 @@ def build_parser() -> argparse.ArgumentParser:
     logs.add_argument("--json", action="store_true")
     logs.set_defaults(func=command_logs)
 
-    images = subparsers.add_parser("update-images", help="Build the local WRF and WPS runtime images")
-    images.set_defaults(func=command_update_images)
+    images = subparsers.add_parser("images", help="Manage digest-pinned runtime images")
+    image_commands = images.add_subparsers(dest="image_command", required=True)
+    image_pull = image_commands.add_parser("pull", help="Pull and activate one runtime release")
+    _add_image_pull_arguments(image_pull)
+    image_pull.set_defaults(func=command_images_pull)
+    image_status = image_commands.add_parser("status", help="Show the active runtime release")
+    image_status.add_argument("--json", action="store_true")
+    image_status.set_defaults(func=command_images_status)
+
+    update = subparsers.add_parser(
+        "update-images",
+        help="Deprecated alias for 'images pull'; no local compiler build is performed",
+    )
+    _add_image_pull_arguments(update)
+    update.set_defaults(func=command_update_images)
     return parser
 
 
