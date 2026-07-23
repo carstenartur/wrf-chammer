@@ -1,0 +1,42 @@
+name: Heavy Workflow Trigger Policy Tests
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/docker-build.yml'
+      - '.github/workflows/docker-wps-build.yml'
+      - '.github/workflows/wps-integration-test.yml'
+      - '.github/workflows/heavy-workflow-trigger-policy-tests.yml'
+      - 'ci/verify-heavy-workflow-triggers.py'
+      - 'doc/HEAVY_WORKFLOW_TRIGGERS.md'
+  push:
+    branches: [master, develop]
+    paths:
+      - '.github/workflows/docker-build.yml'
+      - '.github/workflows/docker-wps-build.yml'
+      - '.github/workflows/wps-integration-test.yml'
+      - '.github/workflows/heavy-workflow-trigger-policy-tests.yml'
+      - 'ci/verify-heavy-workflow-triggers.py'
+      - 'doc/HEAVY_WORKFLOW_TRIGGERS.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: heavy-workflow-trigger-policy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  trigger-policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify Python syntax
+        run: python3 -m py_compile ci/verify-heavy-workflow-triggers.py
+
+      - name: Verify heavy workflow trigger contracts
+        run: python3 ci/verify-heavy-workflow-triggers.py
