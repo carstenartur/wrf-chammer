@@ -45,13 +45,15 @@ class SimulationRunManifestTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory(prefix="run-manifest-")
         self.root = Path(self.temporary.name)
         self.spec_key = "a" * 64
+        self.namelist_wps = "&share\n max_dom = 1,\n/\n"
+        self.namelist_input = "&time_control\n run_hours = 6,\n/\n"
         spec_dir = self.root / "specifications" / self.spec_key
         spec_dir.mkdir(parents=True)
         (spec_dir / "namelist.wps").write_text(
-            "&share\n max_dom = 1,\n/\n", encoding="utf-8"
+            self.namelist_wps, encoding="utf-8"
         )
         (spec_dir / "namelist.input").write_text(
-            "&time_control\n run_hours = 6,\n/\n", encoding="utf-8"
+            self.namelist_input, encoding="utf-8"
         )
         self.specification = {
             "specification_key": self.spec_key,
@@ -61,6 +63,20 @@ class SimulationRunManifestTests(unittest.TestCase):
             "identity": {
                 "source_revision": "1" * 40,
                 "job": {"id": "xaver", "name": "Storm Xaver"},
+                "namelists": {
+                    "namelist.wps": {
+                        "content": self.namelist_wps,
+                        "sha256": hashlib.sha256(
+                            self.namelist_wps.encode("utf-8")
+                        ).hexdigest(),
+                    },
+                    "namelist.input": {
+                        "content": self.namelist_input,
+                        "sha256": hashlib.sha256(
+                            self.namelist_input.encode("utf-8")
+                        ).hexdigest(),
+                    },
+                },
                 "runtime": {
                     "wrf": {
                         "reference": "wrf:test",
@@ -179,6 +195,10 @@ class SimulationRunManifestTests(unittest.TestCase):
             "run_hours = 6",
             manifest["resolved_namelists"]["namelist_input"]["content"],
         )
+        self.assertTrue(
+            manifest["resolved_namelists"]["namelist_input"]
+            ["verified_against_immutable_identity"]
+        )
         self.assertEqual(manifest["resource_report"]["input_size_bytes"], 30)
         self.assertEqual(manifest["resource_report"]["artifact_size_bytes"], 12)
         self.assertEqual(manifest["resource_report"]["cpu_seconds_sum"], 3.5)
@@ -213,6 +233,16 @@ class SimulationRunManifestTests(unittest.TestCase):
         with self.assertRaises(SimulationRunManifestError) as context:
             self.service.manifest(self.job["id"])
         self.assertEqual(context.exception.code, "run_manifest_integrity_error")
+
+    def test_tampered_resolved_namelist_fails_closed(self) -> None:
+        (self.root / "specifications" / self.spec_key / "namelist.input").write_text(
+            "&time_control\n run_hours = 999,\n/\n",
+            encoding="utf-8",
+        )
+        with self.assertRaises(SimulationRunManifestError) as context:
+            self.service.manifest(self.job["id"])
+        self.assertEqual(context.exception.code, "run_manifest_integrity_error")
+        self.assertIn("differs from the immutable identity", context.exception.message)
 
 
 if __name__ == "__main__":
