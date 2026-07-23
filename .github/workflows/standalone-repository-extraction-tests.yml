@@ -105,7 +105,9 @@ jobs:
           assert doctor['status'] in {'ready', 'warning'}
           assert doctor['checks']
           PY
-          test "$(git rev-list --count HEAD -- workbench/cli.py)" -gt 1
+          test "$(git rev-list --count HEAD)" -gt 20
+          test "$(git rev-list --count HEAD -- workbench/server/application.py)" -gt 1
+          test -n "$(git log -1 --format=%H -- workbench/cli.py)"
           git fsck --no-dangling
 
       - name: Upload source-boundary report
