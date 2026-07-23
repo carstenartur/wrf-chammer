@@ -65,6 +65,10 @@ or this documentation changes. The test is intentionally named `*-tests.yml`; th
 heavy workflows exclude unrelated workflow definitions, so future focused test
 workflows do not reintroduce the original regression.
 
+When one of the three heavy workflow definitions changes, that workflow is deliberately
+re-included and runs once on the policy pull request. This validates the actual YAML
+and build invocation before the new filtering policy reaches `master`.
+
 ## Maintenance rule
 
 When a heavy Dockerfile or integration script begins using another file from an
