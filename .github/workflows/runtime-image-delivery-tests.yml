@@ -1,0 +1,79 @@
+name: Runtime Image Delivery Tests
+
+on:
+  pull_request:
+    paths:
+      - 'runtime/**'
+      - 'workbench/runtime_image_service.py'
+      - 'workbench/cli.py'
+      - 'workbench/readiness.py'
+      - 'workbench/pipeline_specification_service.py'
+      - 'workbench/server/tests/test_runtime_image_service.py'
+      - 'workbench/server/tests/test_pipeline_specification_service.py'
+      - 'ci/test_workbench_cli.py'
+      - 'doc/INSTALLATION.md'
+      - '.github/workflows/runtime-image-delivery-tests.yml'
+  push:
+    branches: [master, develop]
+    paths:
+      - 'runtime/**'
+      - 'workbench/runtime_image_service.py'
+      - 'workbench/cli.py'
+      - 'workbench/readiness.py'
+      - 'workbench/pipeline_specification_service.py'
+      - 'workbench/server/tests/test_runtime_image_service.py'
+      - 'workbench/server/tests/test_pipeline_specification_service.py'
+      - 'ci/test_workbench_cli.py'
+      - 'doc/INSTALLATION.md'
+      - '.github/workflows/runtime-image-delivery-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-image-delivery-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  runtime-delivery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONPATH: .
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify Python syntax
+        run: |
+          python3 -m py_compile \
+            workbench/runtime_image_service.py \
+            workbench/cli.py \
+            workbench/readiness.py \
+            workbench/pipeline_specification_service.py \
+            workbench/server/tests/test_runtime_image_service.py
+
+      - name: Test manifest, pull, digest, and activation contracts
+        run: python3 workbench/server/tests/test_runtime_image_service.py -v
+
+      - name: Re-run immutable pipeline runtime provenance tests
+        run: python3 workbench/server/tests/test_pipeline_specification_service.py -v
+
+      - name: Re-run lifecycle CLI tests
+        run: python3 ci/test_workbench_cli.py
+
+      - name: Verify example manifest is explicitly unpublished
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          from workbench.runtime_image_service import load_release_manifest
+
+          path = Path('runtime/release-manifest.example.json')
+          raw = json.loads(path.read_text(encoding='utf-8'))
+          assert raw['release'] == 'example-unpublished'
+          assert all(entry['digest'] == 'sha256:' + '0' * 64 for entry in raw['images'].values())
+          normalized = load_release_manifest(path)
+          assert normalized['release'] == 'example-unpublished'
+          PY
