@@ -81,6 +81,7 @@ jobs:
             > "${RUNNER_TEMP}/standalone-doctor.json"
           python3 - <<'PY'
           import json
+          import os
           from pathlib import Path
 
           report = json.loads(Path('migration-report.json').read_text(encoding='utf-8'))
@@ -93,7 +94,8 @@ jobs:
           assert '.github/workflows/docker-build.yml' in report['fork_only_paths_removed']
           assert '.github/workflows/standalone-repository-extraction-tests.yml' in report['fork_only_paths_removed']
 
-          doctor = json.loads(Path("${RUNNER_TEMP}/standalone-doctor.json").read_text(encoding='utf-8'))
+          doctor_path = Path(os.environ['RUNNER_TEMP']) / 'standalone-doctor.json'
+          doctor = json.loads(doctor_path.read_text(encoding='utf-8'))
           assert doctor['status'] in {'ready', 'warning'}
           assert doctor['checks']
           PY
