@@ -13,6 +13,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 COMMON_EXCLUDED = (
     "README.md",
     "doc/USER_GUIDE.md",
+    "migration/export-standalone-product.py",
+    "migration/standalone-product.json",
     "workbench/simulation_run_manifest.py",
     "workbench/server/tests/test_simulation_reproduction.py",
     "workbench/web/simulation-job-queue.js",
@@ -20,6 +22,7 @@ COMMON_EXCLUDED = (
     "ci/verify-heavy-workflow-triggers.py",
     ".github/workflows/simulation-api-tests.yml",
     ".github/workflows/heavy-workflow-trigger-policy-tests.yml",
+    ".github/workflows/standalone-repository-extraction-tests.yml",
     "Dockerfile.backend",
     "Dockerfile.postproc",
     "Dockerfile.postprocessing",
@@ -125,8 +128,6 @@ def _parse_path_scalar(raw: str) -> str:
         if not isinstance(parsed, str):
             raise AssertionError(f"Non-string path pattern: {parsed!r}")
         return parsed
-    # YAML path examples are often unquoted. A comment starts only after
-    # whitespace so literal '#' characters in a path remain valid.
     return re.split(r"\s+#", value, maxsplit=1)[0].rstrip()
 
 
@@ -206,6 +207,7 @@ def _verify_workflow(relative_path: str, contract: dict[str, tuple[str, ...]]) -
         raise AssertionError(f"{relative_path}: first path must establish the inclusive baseline")
     for required in (
         "!doc/**",
+        "!migration/**",
         "!workbench/**",
         "!visualization/**",
         "!ci/**",
