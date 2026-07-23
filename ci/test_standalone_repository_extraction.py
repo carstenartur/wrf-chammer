@@ -38,9 +38,19 @@ def main() -> int:
     assert manifest["source_repository"] == "carstenartur/wrf-chammer"
     assert manifest["suggested_repository"].endswith("wrf-chammer-workbench")
     assert "README.md" in manifest["required_export_paths"]
+    assert "runtime/source-baseline.json" in manifest["required_export_paths"]
     assert "phys" in manifest["forbidden_export_roots"]
     assert "workbench/" in manifest["include_prefixes"]
     assert "migration/standalone-root/" in manifest["path_renames"]
+    assert (
+        manifest["path_renames"]["migration/runtime-source-baseline.json"]
+        == "runtime/source-baseline.json"
+    )
+    assert ".github/workflows/docker-build.yml" in manifest["remove_after_export"]
+    assert (
+        ".github/workflows/standalone-repository-extraction-tests.yml"
+        in manifest["remove_after_export"]
+    )
 
     source = run(
         sys.executable,
@@ -73,17 +83,16 @@ def main() -> int:
             str(MANIFEST),
             "--plan",
         )
-    marker = '{\n  "destination"'
-    start = planned.stdout.rfind(marker)
-    if start < 0:
-        raise AssertionError(f"Exporter did not emit a JSON plan:\n{planned.stdout}")
-    plan = json.loads(planned.stdout[start:])
+    plan = json.loads(planned.stdout)
     assert plan["destination"] == str(destination.resolve())
     assert plan["source_revision"] == source_report["source_revision"]
     command = plan["filter_repo_command"]
     assert "--force" in command
     assert "workbench/" in command
     assert "migration/standalone-root/:" in command
+    assert "migration/runtime-source-baseline.json:runtime/source-baseline.json" in command
+    assert ".github/workflows/docker-build.yml" in plan["remove_after_export"]
+    assert "ci/verify-standalone-product-extraction.py" in plan["remove_after_export"]
     assert plan["push"] is False
 
     readme = REPO_ROOT / "migration" / "standalone-root" / "README.md"
