@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 import sys
@@ -30,6 +31,17 @@ def run(*command: str) -> subprocess.CompletedProcess[str]:
             f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
         )
     return completed
+
+
+def load_exporter_module():
+    specification = importlib.util.spec_from_file_location(
+        "wrf_chammer_standalone_exporter", EXPORTER
+    )
+    if specification is None or specification.loader is None:
+        raise AssertionError("Cannot load standalone exporter module")
+    module = importlib.util.module_from_spec(specification)
+    specification.loader.exec_module(module)
+    return module
 
 
 def main() -> int:
@@ -86,6 +98,7 @@ def main() -> int:
     plan = json.loads(planned.stdout)
     assert plan["destination"] == str(destination.resolve())
     assert plan["source_revision"] == source_report["source_revision"]
+    assert plan["minimum_source_revision"] == manifest["minimum_source_revision"]
     command = plan["filter_repo_command"]
     assert "--force" in command
     assert "workbench/" in command
@@ -94,6 +107,17 @@ def main() -> int:
     assert ".github/workflows/docker-build.yml" in plan["remove_after_export"]
     assert "ci/verify-standalone-product-extraction.py" in plan["remove_after_export"]
     assert plan["push"] is False
+
+    exporter = load_exporter_module()
+    safe_destination = REPO_ROOT.parent / "wrf-chammer-workbench-safe-test"
+    exporter._assert_safe_destination(REPO_ROOT, safe_destination)
+    for unsafe in (REPO_ROOT, REPO_ROOT / "child", REPO_ROOT.parent):
+        try:
+            exporter._assert_safe_destination(REPO_ROOT, unsafe)
+        except exporter.ExportError:
+            pass
+        else:
+            raise AssertionError(f"Unsafe export destination was accepted: {unsafe}")
 
     readme = REPO_ROOT / "migration" / "standalone-root" / "README.md"
     readme_text = readme.read_text(encoding="utf-8")
