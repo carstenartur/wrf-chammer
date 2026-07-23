@@ -47,6 +47,11 @@ Version 1 contains:
 - persisted resource measurements;
 - an aggregated resource report for the complete job and each pipeline step.
 
+The two resolved namelists are accepted only when their UTF-8 content and SHA-256
+match the values already embedded in the content-addressed immutable specification.
+A missing, symlinked or subsequently modified namelist therefore blocks export rather
+than being silently re-hashed as new evidence.
+
 The resource report distinguishes measured values from derived storage totals:
 
 - `cpu_seconds_sum` and `wall_seconds_sum` sum persisted measurements;
