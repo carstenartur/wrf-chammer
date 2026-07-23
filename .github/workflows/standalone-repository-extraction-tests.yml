@@ -4,6 +4,11 @@ on:
   pull_request:
     paths:
       - 'migration/**'
+      - 'runtime/**'
+      - 'workbench/cli.py'
+      - 'workbench/readiness.py'
+      - 'workbench/runtime_image_service.py'
+      - 'workbench/pipeline_specification_service.py'
       - 'ci/verify-standalone-product-extraction.py'
       - 'ci/test_standalone_repository_extraction.py'
       - 'doc/STANDALONE_REPOSITORY_MIGRATION.md'
@@ -12,6 +17,11 @@ on:
     branches: [master, develop]
     paths:
       - 'migration/**'
+      - 'runtime/**'
+      - 'workbench/cli.py'
+      - 'workbench/readiness.py'
+      - 'workbench/runtime_image_service.py'
+      - 'workbench/pipeline_specification_service.py'
       - 'ci/verify-standalone-product-extraction.py'
       - 'ci/test_standalone_repository_extraction.py'
       - 'doc/STANDALONE_REPOSITORY_MIGRATION.md'
@@ -41,7 +51,8 @@ jobs:
             migration/export-standalone-product.py \
             migration/audit-wrf-runtime-diff.py \
             ci/verify-standalone-product-extraction.py \
-            ci/test_standalone_repository_extraction.py
+            ci/test_standalone_repository_extraction.py \
+            workbench/runtime_image_service.py
 
       - name: Verify extraction manifest and plan
         run: python3 ci/test_standalone_repository_extraction.py
@@ -55,15 +66,17 @@ jobs:
         run: |
           python3 migration/export-standalone-product.py \
             "${RUNNER_TEMP}/wrf-chammer-workbench" \
-            --source . \
-            --allow-known-couplings
+            --source .
 
       - name: Verify exported product checkout
         working-directory: ${{ runner.temp }}/wrf-chammer-workbench
         run: |
           test -f README.md
+          test -f runtime/README.md
+          test -f runtime/release-manifest.schema.json
           test -f runtime/source-baseline.json
           test -f workbench/cli.py
+          test -f workbench/runtime_image_service.py
           test -f workbench/server/application.py
           test -d visualization
           test ! -e phys
@@ -75,6 +88,8 @@ jobs:
           python3 -m py_compile \
             wrf-chammer \
             workbench/cli.py \
+            workbench/readiness.py \
+            workbench/runtime_image_service.py \
             workbench/server/application.py \
             workbench/simulation_store.py
           python3 wrf-chammer doctor --skip-images --json \
@@ -89,8 +104,8 @@ jobs:
           assert len(report['source_revision_before_filter']) == 40
           assert report['tracked_file_count'] > 50
           assert report['forbidden_roots'] == []
-          assert report['known_runtime_couplings']
-          assert report['ready_for_standalone_release'] is False
+          assert report['known_runtime_couplings'] == []
+          assert report['ready_for_standalone_release'] is True
           assert '.github/workflows/docker-build.yml' in report['fork_only_paths_removed']
           assert '.github/workflows/standalone-repository-extraction-tests.yml' in report['fork_only_paths_removed']
 
