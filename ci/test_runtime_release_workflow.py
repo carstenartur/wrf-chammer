@@ -27,7 +27,12 @@ def main() -> int:
     require(text, "product_source_revision")
     require(text, "publish:")
 
-    for dockerfile in ("Dockerfile", "Dockerfile.wps", "Dockerfile.era5", "Dockerfile.postprocessing"):
+    for dockerfile in (
+        "Dockerfile",
+        "Dockerfile.wps",
+        "Dockerfile.era5",
+        "Dockerfile.postprocessing",
+    ):
         require(text, dockerfile)
     require(text, "/usr/local/bin/smoke-test-wrf.sh")
     require(text, "ci/test-era5-wps-integration.sh")
@@ -40,6 +45,8 @@ def main() -> int:
     ):
         require(text, image)
 
+    require(text, "docker manifest inspect")
+    require(text, "Refusing to overwrite existing immutable runtime tag")
     require(text, "docker push")
     require(text, ".RepoDigests")
     require(text, "^sha256:[0-9a-f]{64}$")
