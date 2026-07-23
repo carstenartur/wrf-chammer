@@ -3,7 +3,9 @@
   "product_name": "WRF Chammer Workbench",
   "suggested_repository": "carstenartur/wrf-chammer-workbench",
   "source_repository": "carstenartur/wrf-chammer",
-  "source_revision": "f18e0f6068bbedb2b29a849c38087b244a5aef0b",
+  "minimum_source_revision": "f18e0f6068bbedb2b29a849c38087b244a5aef0b",
+  "export_revision_policy": "Use the explicit --revision argument or the current source HEAD. The resolved full SHA is written to migration-report.json.",
+  "runtime_source_baseline": "migration/runtime-source-baseline.json",
   "history_preserving_tool": "git-filter-repo",
   "include_prefixes": [
     "workbench/",
