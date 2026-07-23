@@ -62,6 +62,12 @@ jobs:
         working-directory: ${{ runner.temp }}/wrf-chammer-workbench
         run: |
           test -f README.md
+          test -f THIRD_PARTY_NOTICES/WRF-LICENSE.txt
+          test ! -e LICENSE
+          test ! -e LICENSE.txt
+          grep -q 'WRF was developed at the National Center for Atmospheric Research' \
+            THIRD_PARTY_NOTICES/WRF-LICENSE.txt
+          grep -q 'No product license is inferred' README.md
           test -f runtime/source-baseline.json
           test -f workbench/cli.py
           test -f workbench/server/application.py
