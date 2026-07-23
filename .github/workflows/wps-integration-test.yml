@@ -14,7 +14,7 @@ name: ERA5/WPS Integration Test
 #
 # Trigger policy:
 # - WRF source, Dockerfiles and bundled integration fixtures are included by default;
-# - fork-owned application, documentation, visualization and unrelated CI changes are excluded;
+# - fork-owned application, migration, documentation, visualization and unrelated CI changes are excluded;
 # - only scripts copied into the ERA5 image or invoked by this integration test are added back.
 # Keep this contract synchronized with ci/verify-heavy-workflow-triggers.py.
 on:
@@ -22,6 +22,7 @@ on:
     paths:
       - '**'
       - '!doc/**'
+      - '!migration/**'
       - '!**/*.md'
       - '!workbench/**'
       - '!visualization/**'
@@ -47,6 +48,7 @@ on:
     paths:
       - '**'
       - '!doc/**'
+      - '!migration/**'
       - '!**/*.md'
       - '!workbench/**'
       - '!visualization/**'
