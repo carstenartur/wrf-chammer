@@ -15,6 +15,8 @@ from typing import Any
 
 FORMAT_NAME = "wrf-chammer-runtime-release"
 FORMAT_VERSION = 1
+ACTIVATION_NAME = "wrf-chammer-runtime-activation"
+ACTIVATION_VERSION = 1
 COMPONENTS = ("wps", "wrf", "postprocessing")
 _DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _REVISION_RE = re.compile(r"^[0-9a-f]{40,64}$")
@@ -99,16 +101,13 @@ def _validate_reference(value: Any, field: str) -> str:
 
 
 def load_release_manifest(path: Path) -> dict[str, Any]:
+    resolved_path = path.resolve()
     payload = _read_json(
-        path.resolve(),
+        resolved_path,
         code="runtime_manifest_unavailable",
         message="A runtime release manifest is not available.",
     )
-    format_value = payload.get("format")
-    if not isinstance(format_value, dict) or format_value != {
-        "name": FORMAT_NAME,
-        "version": FORMAT_VERSION,
-    }:
+    if payload.get("format") != {"name": FORMAT_NAME, "version": FORMAT_VERSION}:
         raise RuntimeImageError(
             "invalid_runtime_manifest", "Unsupported runtime release manifest format."
         )
@@ -118,9 +117,7 @@ def load_release_manifest(path: Path) -> dict[str, Any]:
         raise RuntimeImageError(
             "invalid_runtime_manifest", "Runtime release identifier is invalid."
         )
-    if not isinstance(source_revision, str) or not _REVISION_RE.fullmatch(
-        source_revision
-    ):
+    if not isinstance(source_revision, str) or not _REVISION_RE.fullmatch(source_revision):
         raise RuntimeImageError(
             "invalid_runtime_manifest", "Product source revision must be a full Git SHA."
         )
@@ -137,7 +134,9 @@ def load_release_manifest(path: Path) -> dict[str, Any]:
             raise RuntimeImageError(
                 "invalid_runtime_manifest", f"Runtime image {component} is invalid."
             )
-        reference = _validate_reference(entry.get("reference"), f"images.{component}.reference")
+        reference = _validate_reference(
+            entry.get("reference"), f"images.{component}.reference"
+        )
         digest = entry.get("digest")
         if not isinstance(digest, str) or not _DIGEST_RE.fullmatch(digest):
             raise RuntimeImageError(
@@ -158,7 +157,7 @@ def load_release_manifest(path: Path) -> dict[str, Any]:
     return {
         **normalized,
         "manifest_sha256": _sha256_json(normalized),
-        "manifest_path": str(path.resolve()),
+        "manifest_path": str(resolved_path),
     }
 
 
@@ -170,6 +169,24 @@ def _container_engine(configured: str | None = None) -> str:
             "container_engine_unavailable", f"Container engine {name!r} is not available."
         )
     return executable
+
+
+def _current_source_revision(repo_root: Path) -> str | None:
+    configured = os.environ.get("WRF_CHAMMER_SOURCE_REVISION")
+    if configured and _REVISION_RE.fullmatch(configured.strip().lower()):
+        return configured.strip().lower()
+    completed = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo_root,
+        stdin=subprocess.DEVNULL,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        timeout=5,
+        check=False,
+    )
+    revision = completed.stdout.strip().lower() if completed.returncode == 0 else ""
+    return revision if _REVISION_RE.fullmatch(revision) else None
 
 
 def _inspect_image(engine: str, selector: str, digest: str) -> dict[str, Any]:
@@ -228,6 +245,12 @@ def pull_release(
 ) -> dict[str, Any]:
     root = repo_root.resolve()
     manifest = load_release_manifest(manifest_path or default_manifest_path(root))
+    current_revision = _current_source_revision(root)
+    if current_revision and current_revision != manifest["product_source_revision"]:
+        raise RuntimeImageError(
+            "runtime_release_product_mismatch",
+            "Runtime release manifest belongs to a different Workbench source revision.",
+        )
     engine = _container_engine(engine_name)
     inspected: dict[str, dict[str, Any]] = {}
     for component in COMPONENTS:
@@ -244,12 +267,11 @@ def pull_release(
             )
         inspected[component] = _inspect_image(engine, selector, entry["digest"])
 
-    activation = {
-        "format": {"name": "wrf-chammer-runtime-activation", "version": 1},
+    activation_core = {
+        "format": {"name": ACTIVATION_NAME, "version": ACTIVATION_VERSION},
         "release": manifest["release"],
         "product_source_revision": manifest["product_source_revision"],
         "manifest_sha256": manifest["manifest_sha256"],
-        "manifest_path": manifest["manifest_path"],
         "images": {
             component: {
                 "reference": manifest["images"][component]["selector"],
@@ -258,6 +280,10 @@ def pull_release(
             }
             for component in COMPONENTS
         },
+    }
+    activation = {
+        **activation_core,
+        "activation_sha256": _sha256_json(activation_core),
     }
     _atomic_json(activation_path(root), activation)
     return activation
@@ -277,18 +303,26 @@ def load_activation(repo_root: Path, *, required: bool = False) -> dict[str, Any
         code="runtime_activation_invalid",
         message="The active runtime image record is invalid.",
     )
-    if payload.get("format") != {
-        "name": "wrf-chammer-runtime-activation",
-        "version": 1,
-    }:
+    if payload.get("format") != {"name": ACTIVATION_NAME, "version": ACTIVATION_VERSION}:
         raise RuntimeImageError(
             "runtime_activation_invalid", "Unsupported runtime activation format."
         )
+    release = payload.get("release")
     source_revision = payload.get("product_source_revision")
+    manifest_sha256 = payload.get("manifest_sha256")
+    activation_sha256 = payload.get("activation_sha256")
     images = payload.get("images")
+    if not isinstance(release, str) or not _RELEASE_RE.fullmatch(release):
+        raise RuntimeImageError(
+            "runtime_activation_invalid", "Active runtime release identifier is invalid."
+        )
     if not isinstance(source_revision, str) or not _REVISION_RE.fullmatch(source_revision):
         raise RuntimeImageError(
             "runtime_activation_invalid", "Active product source revision is invalid."
+        )
+    if not isinstance(manifest_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", manifest_sha256):
+        raise RuntimeImageError(
+            "runtime_activation_invalid", "Active runtime manifest checksum is invalid."
         )
     if not isinstance(images, dict) or set(images) != set(COMPONENTS):
         raise RuntimeImageError(
@@ -303,15 +337,26 @@ def load_activation(repo_root: Path, *, required: bool = False) -> dict[str, Any
         reference = entry.get("reference")
         identity = entry.get("identity")
         if (
-            not isinstance(reference, str)
-            or not reference.endswith(f"@{identity}")
-            or not isinstance(identity, str)
+            not isinstance(identity, str)
             or not _DIGEST_RE.fullmatch(identity)
+            or not isinstance(reference, str)
+            or not reference.endswith(f"@{identity}")
         ):
             raise RuntimeImageError(
                 "runtime_activation_invalid",
                 f"Active {component} runtime is not digest-pinned.",
             )
+    activation_core = {
+        key: value for key, value in payload.items() if key != "activation_sha256"
+    }
+    if (
+        not isinstance(activation_sha256, str)
+        or not re.fullmatch(r"[0-9a-f]{64}", activation_sha256)
+        or _sha256_json(activation_core) != activation_sha256
+    ):
+        raise RuntimeImageError(
+            "runtime_activation_invalid", "Active runtime record failed its integrity check."
+        )
     return payload
 
 
