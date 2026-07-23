@@ -3,7 +3,7 @@ name: Docker WPS Reproducible Build
 # Trigger policy:
 # - WRF source and repository-root build changes are included by default because
 #   Dockerfile.wps compiles WRF before WPS;
-# - fork-owned application, documentation, visualization and unrelated CI changes are excluded;
+# - fork-owned application, migration, documentation, visualization and unrelated CI changes are excluded;
 # - only scripts copied or invoked by this image are added back explicitly.
 # Keep this contract synchronized with ci/verify-heavy-workflow-triggers.py.
 on:
@@ -11,6 +11,7 @@ on:
     paths:
       - '**'
       - '!doc/**'
+      - '!migration/**'
       - '!**/*.md'
       - '!workbench/**'
       - '!visualization/**'
@@ -27,6 +28,7 @@ on:
     paths:
       - '**'
       - '!doc/**'
+      - '!migration/**'
       - '!**/*.md'
       - '!workbench/**'
       - '!visualization/**'
